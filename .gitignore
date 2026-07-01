@@ -1,41 +1,76 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# dependencies
-/node_modules
-/.pnp
+# ── Node / package managers ──────────────────────────────
+node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+.pnpm-store/
+.npm/
 
-# testing
-/coverage
+# ── Next.js ──────────────────────────────────────────────
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
 
-# next.js
-/.next/
-/out/
+# ── SmartCal runtime data ────────────────────────────────
+# SQLite database, WAL, and journal live here by default.
+# Never commit — contains events, chore history, Google OAuth tokens.
+.data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 
-# production
-/build
+# Screensaver photo library (if used locally)
+/photos/
 
-# misc
+# Screenshot previews used during development
+/.preview-*.png
+
+# ── Environment / secrets ────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# Google OAuth client secrets and tokens
+credentials.json
+token.json
+service-account*.json
+
+# ── Editors / OS ─────────────────────────────────────────
 .DS_Store
-*.pem
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# debug
+# ── Logs ─────────────────────────────────────────────────
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+logs/
 
-# env files (can opt-in for committing if needed)
-.env*
+# ── Testing / coverage ───────────────────────────────────
+coverage/
+.nyc_output/
 
-# vercel
-.vercel
+# ── Deploy ───────────────────────────────────────────────
+.vercel/
+*.pem
+*.key
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# ── Misc ─────────────────────────────────────────────────
+.cache/
+.tmp/
+tmp/

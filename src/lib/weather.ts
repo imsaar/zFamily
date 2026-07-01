@@ -1,0 +1,95 @@
+import { getSetting } from "./settings";
+
+export type WeatherSnapshot = {
+  label: string;
+  currentTempF: number;
+  currentCondition: string;
+  conditionIcon: string;
+  highF: number;
+  lowF: number;
+  forecast: Array<{ date: string; highF: number; lowF: number; icon: string; condition: string }>;
+  fetchedAt: number;
+};
+
+let cache: { data: WeatherSnapshot; expiresAt: number } | null = null;
+
+// https://open-meteo.com/en/docs#weathervariables
+const WMO_MAP: Record<number, { icon: string; condition: string }> = {
+  0:  { icon: "☀️", condition: "Clear" },
+  1:  { icon: "🌤️", condition: "Mostly clear" },
+  2:  { icon: "⛅",  condition: "Partly cloudy" },
+  3:  { icon: "☁️", condition: "Overcast" },
+  45: { icon: "🌫️", condition: "Fog" },
+  48: { icon: "🌫️", condition: "Fog" },
+  51: { icon: "🌦️", condition: "Light drizzle" },
+  53: { icon: "🌦️", condition: "Drizzle" },
+  55: { icon: "🌧️", condition: "Heavy drizzle" },
+  61: { icon: "🌧️", condition: "Light rain" },
+  63: { icon: "🌧️", condition: "Rain" },
+  65: { icon: "🌧️", condition: "Heavy rain" },
+  71: { icon: "🌨️", condition: "Light snow" },
+  73: { icon: "🌨️", condition: "Snow" },
+  75: { icon: "❄️", condition: "Heavy snow" },
+  77: { icon: "🌨️", condition: "Snow grains" },
+  80: { icon: "🌧️", condition: "Rain showers" },
+  81: { icon: "🌧️", condition: "Heavy showers" },
+  82: { icon: "⛈️", condition: "Violent showers" },
+  95: { icon: "⛈️", condition: "Thunderstorm" },
+  96: { icon: "⛈️", condition: "Thunderstorm w/ hail" },
+  99: { icon: "⛈️", condition: "Severe storm" },
+};
+
+function descCode(code: number) {
+  return WMO_MAP[code] ?? { icon: "🌡️", condition: "Unknown" };
+}
+
+export async function getWeather(): Promise<WeatherSnapshot | null> {
+  if (cache && cache.expiresAt > Date.now()) return cache.data;
+
+  const lat = getSetting("weather_lat");
+  const lon = getSetting("weather_lon");
+  const label = getSetting("weather_label") ?? "";
+  if (!lat || !lon) return null;
+
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.searchParams.set("latitude", lat);
+  url.searchParams.set("longitude", lon);
+  url.searchParams.set("current", "temperature_2m,weather_code");
+  url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min,weather_code");
+  url.searchParams.set("temperature_unit", "fahrenheit");
+  url.searchParams.set("timezone", "auto");
+  url.searchParams.set("forecast_days", "5");
+
+  try {
+    const res = await fetch(url, { next: { revalidate: 600 } });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const cur = data.current ?? {};
+    const daily = data.daily ?? {};
+    const curDesc = descCode(cur.weather_code ?? 0);
+    const forecast = (daily.time ?? []).map((d: string, i: number) => {
+      const c = descCode(daily.weather_code?.[i] ?? 0);
+      return {
+        date: d,
+        highF: Math.round(daily.temperature_2m_max?.[i] ?? 0),
+        lowF: Math.round(daily.temperature_2m_min?.[i] ?? 0),
+        icon: c.icon,
+        condition: c.condition,
+      };
+    });
+    const snap: WeatherSnapshot = {
+      label,
+      currentTempF: Math.round(cur.temperature_2m ?? 0),
+      currentCondition: curDesc.condition,
+      conditionIcon: curDesc.icon,
+      highF: forecast[0]?.highF ?? 0,
+      lowF: forecast[0]?.lowF ?? 0,
+      forecast,
+      fetchedAt: Date.now(),
+    };
+    cache = { data: snap, expiresAt: Date.now() + 10 * 60 * 1000 };
+    return snap;
+  } catch {
+    return null;
+  }
+}
