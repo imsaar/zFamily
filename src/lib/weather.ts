@@ -49,6 +49,7 @@ export async function getWeather(): Promise<WeatherSnapshot | null> {
   const lat = getSetting("weather_lat");
   const lon = getSetting("weather_lon");
   const label = getSetting("weather_label") ?? "";
+  const tz = getSetting("weather_tz") || "auto";
   if (!lat || !lon) return null;
 
   const url = new URL("https://api.open-meteo.com/v1/forecast");
@@ -57,7 +58,7 @@ export async function getWeather(): Promise<WeatherSnapshot | null> {
   url.searchParams.set("current", "temperature_2m,weather_code");
   url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min,weather_code");
   url.searchParams.set("temperature_unit", "fahrenheit");
-  url.searchParams.set("timezone", "auto");
+  url.searchParams.set("timezone", tz);
   url.searchParams.set("forecast_days", "5");
 
   try {

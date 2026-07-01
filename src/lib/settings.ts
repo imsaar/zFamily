@@ -22,3 +22,16 @@ export function getAllSettings(): Record<string, string> {
   }>;
   return Object.fromEntries(rows.map((r) => [r.key, r.value]));
 }
+
+/** IANA timezone derived from the weather location (or the server's TZ if
+ *  the user hasn't picked a location yet). Use this instead of `new Date()`
+ *  when the value is user-facing. */
+export function getTimezone(): string {
+  const tz = getSetting("weather_tz");
+  if (tz && tz !== "auto") return tz;
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "UTC";
+  }
+}

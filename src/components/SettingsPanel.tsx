@@ -19,7 +19,9 @@ import {
   deleteRewardAction,
   setMemberPinAction,
   clearMemberPinAction,
+  searchCityAction,
 } from "@/app/actions";
+import type { GeocodeResult } from "@/lib/geocode";
 import { Sheet } from "./Sheet";
 import { useAdminAuth } from "./AdminGate";
 import { PinPadModal } from "./PinPad";
@@ -696,13 +698,42 @@ function WeatherTab({ settings }: { settings: Record<string, string> }) {
   const [label, setLabel] = useState(settings.weather_label ?? "");
   const [lat, setLat] = useState(settings.weather_lat ?? "");
   const [lon, setLon] = useState(settings.weather_lon ?? "");
+  const [tz, setTz] = useState(settings.weather_tz ?? "");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GeocodeResult[]>([]);
+  const [searching, startSearch] = useTransition();
+
+  const runSearch = () => {
+    if (query.trim().length < 2) return;
+    startSearch(async () => {
+      const r = await searchCityAction(query);
+      setResults(r.results);
+    });
+  };
+
+  const pick = (r: GeocodeResult) => {
+    const bits = [r.name, r.admin1, r.countryCode].filter(Boolean).join(", ");
+    setLabel(bits);
+    setLat(r.latitude.toFixed(4));
+    setLon(r.longitude.toFixed(4));
+    setTz(r.timezone);
+    setResults([]);
+    setQuery("");
+  };
 
   const save = () => {
     start(async () => {
       const ok = await authenticate(async (auth) => {
-        await updateSettingAction("weather_label", label, auth);
-        await updateSettingAction("weather_lat", lat, auth);
-        await updateSettingAction("weather_lon", lon, auth);
+        const updates: Array<[string, string]> = [
+          ["weather_label", label],
+          ["weather_lat", lat],
+          ["weather_lon", lon],
+          ["weather_tz", tz],
+        ];
+        for (const [k, v] of updates) {
+          const r = await updateSettingAction(k, v, auth);
+          if (!r.ok) return r;
+        }
         return { ok: true };
       });
       if (ok) router.refresh();
@@ -712,21 +743,82 @@ function WeatherTab({ settings }: { settings: Record<string, string> }) {
   return (
     <div className="max-w-2xl space-y-5">
       <h2 className="text-2xl font-semibold mb-2">Weather</h2>
-      <p className="text-zinc-500 text-sm">Powered by Open-Meteo (no API key). Find your latitude/longitude on Google Maps.</p>
+      <p className="text-zinc-500 text-sm">Powered by Open-Meteo (no API key). Search a city to auto-fill coordinates and timezone.</p>
+
       <div>
-        <label className="text-sm font-medium text-zinc-500">Location label</label>
-        <input value={label} onChange={(e) => setLabel(e.target.value)} className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl" />
+        <label className="text-sm font-medium text-zinc-500">Search city, state or country</label>
+        <div className="mt-1 flex gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && runSearch()}
+            placeholder="e.g. Austin, Texas"
+            className="flex-1 px-4 py-3 text-lg border border-zinc-300 rounded-xl"
+          />
+          <button
+            onClick={runSearch}
+            disabled={searching || query.trim().length < 2}
+            className="px-5 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-40"
+          >
+            {searching ? "Searching…" : "🔍 Search"}
+          </button>
+        </div>
+        {results.length > 0 && (
+          <ul className="mt-2 border border-zinc-200 rounded-xl overflow-hidden divide-y divide-zinc-100 bg-white">
+            {results.map((r, i) => (
+              <li key={i}>
+                <button
+                  onClick={() => pick(r)}
+                  className="w-full text-left px-4 py-3 hover:bg-zinc-50 active:bg-zinc-100"
+                >
+                  <div className="font-medium">
+                    {r.name}
+                    {r.admin1 ? `, ${r.admin1}` : ""}
+                    {r.country ? ` · ${r.country}` : ""}
+                  </div>
+                  <div className="text-xs text-zinc-500 tabular-nums">
+                    {r.latitude.toFixed(3)}, {r.longitude.toFixed(3)} · {r.timezone}
+                    {r.population ? ` · pop ${r.population.toLocaleString()}` : ""}
+                  </div>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {results.length === 0 && searching === false && query.trim().length >= 2 && (
+          <div className="mt-2 text-sm text-zinc-400 italic">Enter → search. No results yet.</div>
+        )}
       </div>
-      <div className="grid grid-cols-2 gap-4">
+
+      <div className="border-t border-zinc-100 pt-4 space-y-4">
         <div>
-          <label className="text-sm font-medium text-zinc-500">Latitude</label>
-          <input value={lat} onChange={(e) => setLat(e.target.value)} className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl tabular-nums" />
+          <label className="text-sm font-medium text-zinc-500">Location label</label>
+          <input value={label} onChange={(e) => setLabel(e.target.value)} className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl" />
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="text-sm font-medium text-zinc-500">Latitude</label>
+            <input value={lat} onChange={(e) => setLat(e.target.value)} className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl tabular-nums" />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-zinc-500">Longitude</label>
+            <input value={lon} onChange={(e) => setLon(e.target.value)} className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl tabular-nums" />
+          </div>
         </div>
         <div>
-          <label className="text-sm font-medium text-zinc-500">Longitude</label>
-          <input value={lon} onChange={(e) => setLon(e.target.value)} className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl tabular-nums" />
+          <label className="text-sm font-medium text-zinc-500">Timezone (IANA)</label>
+          <input
+            value={tz}
+            onChange={(e) => setTz(e.target.value)}
+            placeholder="America/Los_Angeles"
+            className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl"
+          />
+          <p className="text-xs text-zinc-500 mt-1">
+            Used for all clocks and dates in the app. Auto-filled when you pick a city above.
+          </p>
         </div>
       </div>
+
       <button onClick={save} disabled={pending} className="px-6 py-3 rounded-xl bg-zinc-900 text-white font-medium">
         Save
       </button>
@@ -752,13 +844,19 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
   const save = () => {
     start(async () => {
       const ok = await authenticate(async (auth) => {
-        await updateSettingAction("quiet_start", quietStart, auth);
-        await updateSettingAction("quiet_end", quietEnd, auth);
-        await updateSettingAction("chore_reset_hour", resetHour, auth);
-        await updateSettingAction("idle_seconds", String(Math.max(30, Number(idleMin) * 60)), auth);
-        await updateSettingAction("screensaver_mode", ssMode, auth);
-        await updateSettingAction("personal_idle_seconds", String(Math.max(30, Number(personalIdleMin) * 60)), auth);
-        await updateSettingAction("hijri_offset", String(Math.max(-3, Math.min(3, Number(hijriOffset) || 0))), auth);
+        const updates: Array<[string, string]> = [
+          ["quiet_start", quietStart],
+          ["quiet_end", quietEnd],
+          ["chore_reset_hour", resetHour],
+          ["idle_seconds", String(Math.max(30, Number(idleMin) * 60))],
+          ["screensaver_mode", ssMode],
+          ["personal_idle_seconds", String(Math.max(30, Number(personalIdleMin) * 60))],
+          ["hijri_offset", String(Math.max(-3, Math.min(3, Number(hijriOffset) || 0)))],
+        ];
+        for (const [k, v] of updates) {
+          const r = await updateSettingAction(k, v, auth);
+          if (!r.ok) return r;
+        }
         return { ok: true };
       });
       if (ok) router.refresh();

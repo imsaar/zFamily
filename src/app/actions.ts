@@ -7,6 +7,7 @@ import { createMember, updateMember, deleteMember } from "@/lib/members";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting } from "@/lib/settings";
 import { requirePin, setMemberPin, clearMemberPin, memberHasPin, verifyMemberPin } from "@/lib/pins";
+import { searchCity } from "@/lib/geocode";
 import {
   createMeal,
   updateMeal,
@@ -308,6 +309,11 @@ export async function setMemberPinAction(memberId: number, newPin: string, curre
   const result = setMemberPin(memberId, newPin);
   bust();
   return result;
+}
+
+export async function searchCityAction(query: string) {
+  const results = await searchCity(query);
+  return { results };
 }
 
 export async function clearMemberPinAction(memberId: number, currentPin: string) {

@@ -232,6 +232,7 @@ function seedIfEmpty(conn: Database.Database) {
   setting.run("weather_lat", "37.7749");
   setting.run("weather_lon", "-122.4194");
   setting.run("weather_label", "San Francisco");
+  setting.run("weather_tz", "America/Los_Angeles");
   setting.run("quiet_start", "21:00");
   setting.run("quiet_end", "07:00");
   setting.run("chore_reset_hour", "4");
