@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Member, MemberColor, MemberRole } from "@/lib/types";
 import { COLOR_CLASSES, MEMBER_COLORS } from "@/lib/types";
@@ -77,7 +77,7 @@ export function SettingsPanel({
 
 function MembersTab({ members }: { members: Member[] }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<Member | "new" | null>(null);
   const { authenticate, modal } = useAdminAuth();
 
@@ -116,12 +116,15 @@ function MembersTab({ members }: { members: Member[] }) {
                 Edit
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!confirm(`Delete ${m.name}?`)) return;
-                  start(async () => {
+                  setPending(true);
+                  try {
                     const ok = await authenticate((auth) => deleteMemberAction(m.id, auth));
                     if (ok) router.refresh();
-                  });
+                  } finally {
+                    setPending(false);
+                  }
                 }}
                 disabled={pending}
                 className="px-3 py-2 rounded-lg text-red-600"
@@ -146,7 +149,7 @@ function MembersTab({ members }: { members: Member[] }) {
 
 function MemberEditor({ member, onClose }: { member: Member | null; onClose: () => void }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const { authenticate, modal } = useAdminAuth();
   const [pinPad, setPinPad] = useState<null | "set" | "clear">(null);
   const [pinError, setPinError] = useState<string | null>(null);
@@ -155,9 +158,10 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
   const [emoji, setEmoji] = useState(member?.emoji ?? "");
   const [role, setRole] = useState<MemberRole>(member?.role ?? "parent");
 
-  const onSave = () => {
+  const onSave = async () => {
     if (!name.trim()) return;
-    start(async () => {
+    setPending(true);
+    try {
       const ok = await authenticate((auth) => {
         if (member) return updateMemberAction(member.id, { name, color, emoji: emoji || null, role }, auth);
         return createMemberAction({ name, color, emoji: emoji || null, role }, auth);
@@ -166,7 +170,9 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
         router.refresh();
         onClose();
       }
-    });
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -376,7 +382,7 @@ const RECURRENCES: Array<[string, string]> = [
 
 function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members: Member[] }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<ChoreWithAssignees | "new" | null>(null);
   const { authenticate, modal } = useAdminAuth();
 
@@ -415,12 +421,15 @@ function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members:
             </div>
             <button onClick={() => setEditing(c)} className="px-4 py-2 rounded-lg border border-zinc-300">Edit</button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!confirm(`Delete chore "${c.title}"?`)) return;
-                start(async () => {
+                setPending(true);
+                try {
                   const ok = await authenticate((auth) => deleteChoreAction(c.id, auth));
                   if (ok) router.refresh();
-                });
+                } finally {
+                  setPending(false);
+                }
               }}
               disabled={pending}
               className="px-3 py-2 rounded-lg text-red-600"
@@ -453,7 +462,7 @@ function ChoreEditor({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const { authenticate, modal } = useAdminAuth();
   const [title, setTitle] = useState(chore?.title ?? "");
   const [icon, setIcon] = useState(chore?.icon ?? "📋");
@@ -461,9 +470,10 @@ function ChoreEditor({
   const [recurrence, setRecurrence] = useState(chore?.recurrence ?? "daily");
   const [assignees, setAssignees] = useState<Set<number>>(new Set(chore?.assignees ?? []));
 
-  const onSave = () => {
+  const onSave = async () => {
     if (!title.trim()) return;
-    start(async () => {
+    setPending(true);
+    try {
       const data = {
         title: title.trim(),
         icon: icon || null,
@@ -479,7 +489,9 @@ function ChoreEditor({
         router.refresh();
         onClose();
       }
-    });
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -571,7 +583,7 @@ function ChoreEditor({
 
 function RewardsTab({ rewards }: { rewards: Reward[] }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<Reward | "new" | null>(null);
   const { authenticate, modal } = useAdminAuth();
 
@@ -603,12 +615,15 @@ function RewardsTab({ rewards }: { rewards: Reward[] }) {
             <div className="text-lg font-semibold text-amber-600 tabular-nums">{r.points_cost} pts</div>
             <button onClick={() => setEditing(r)} className="px-4 py-2 rounded-lg border border-zinc-300">Edit</button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 if (!confirm(`Delete "${r.title}"?`)) return;
-                start(async () => {
+                setPending(true);
+                try {
                   const ok = await authenticate((auth) => deleteRewardAction(r.id, auth));
                   if (ok) router.refresh();
-                });
+                } finally {
+                  setPending(false);
+                }
               }}
               disabled={pending}
               className="px-3 py-2 rounded-lg text-red-600"
@@ -628,17 +643,18 @@ function RewardsTab({ rewards }: { rewards: Reward[] }) {
 
 function RewardEditor({ reward, onClose }: { reward: Reward | null; onClose: () => void }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const { authenticate, modal } = useAdminAuth();
   const [title, setTitle] = useState(reward?.title ?? "");
   const [icon, setIcon] = useState(reward?.icon ?? "🎁");
   const [description, setDescription] = useState(reward?.description ?? "");
   const [cost, setCost] = useState(String(reward?.points_cost ?? 10));
 
-  const save = () => {
+  const save = async () => {
     if (!title.trim()) return;
     const points = Math.max(0, Math.round(Number(cost) || 0));
-    start(async () => {
+    setPending(true);
+    try {
       const data = { title: title.trim(), icon: icon || null, description: description || null, points_cost: points };
       const ok = await authenticate((auth) => {
         if (reward) return updateRewardAction(reward.id, data, auth);
@@ -648,7 +664,9 @@ function RewardEditor({ reward, onClose }: { reward: Reward | null; onClose: () 
         router.refresh();
         onClose();
       }
-    });
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -693,7 +711,7 @@ function RewardEditor({ reward, onClose }: { reward: Reward | null; onClose: () 
 
 function WeatherTab({ settings }: { settings: Record<string, string> }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
   const { authenticate, modal } = useAdminAuth();
   const [label, setLabel] = useState(settings.weather_label ?? "");
   const [lat, setLat] = useState(settings.weather_lat ?? "");
@@ -701,14 +719,18 @@ function WeatherTab({ settings }: { settings: Record<string, string> }) {
   const [tz, setTz] = useState(settings.weather_tz ?? "");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GeocodeResult[]>([]);
-  const [searching, startSearch] = useTransition();
+  const [searching, setSearching] = useState(false);
+  const [saved, setSaved] = useState(false);
 
-  const runSearch = () => {
+  const runSearch = async () => {
     if (query.trim().length < 2) return;
-    startSearch(async () => {
+    setSearching(true);
+    try {
       const r = await searchCityAction(query);
       setResults(r.results);
-    });
+    } finally {
+      setSearching(false);
+    }
   };
 
   const pick = (r: GeocodeResult) => {
@@ -721,8 +743,10 @@ function WeatherTab({ settings }: { settings: Record<string, string> }) {
     setQuery("");
   };
 
-  const save = () => {
-    start(async () => {
+  const save = async () => {
+    setPending(true);
+    setSaved(false);
+    try {
       const ok = await authenticate(async (auth) => {
         const updates: Array<[string, string]> = [
           ["weather_label", label],
@@ -736,8 +760,13 @@ function WeatherTab({ settings }: { settings: Record<string, string> }) {
         }
         return { ok: true };
       });
-      if (ok) router.refresh();
-    });
+      if (ok) {
+        setSaved(true);
+        router.refresh();
+      }
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -819,9 +848,12 @@ function WeatherTab({ settings }: { settings: Record<string, string> }) {
         </div>
       </div>
 
-      <button onClick={save} disabled={pending} className="px-6 py-3 rounded-xl bg-zinc-900 text-white font-medium">
-        Save
-      </button>
+      <div className="flex items-center gap-3">
+        <button onClick={save} disabled={pending} className="px-6 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-50">
+          {pending ? "Saving…" : "Save"}
+        </button>
+        {saved && <span className="text-emerald-600 text-sm">✓ Saved</span>}
+      </div>
       {modal}
     </div>
   );
@@ -829,7 +861,8 @@ function WeatherTab({ settings }: { settings: Record<string, string> }) {
 
 function DisplayTab({ settings }: { settings: Record<string, string> }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [pending, setPending] = useState(false);
+  const [saved, setSaved] = useState(false);
   const { authenticate, modal } = useAdminAuth();
   const [quietStart, setQuietStart] = useState(settings.quiet_start ?? "21:00");
   const [quietEnd, setQuietEnd] = useState(settings.quiet_end ?? "07:00");
@@ -841,8 +874,10 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
   );
   const [hijriOffset, setHijriOffset] = useState(String(Number(settings.hijri_offset ?? "0")));
 
-  const save = () => {
-    start(async () => {
+  const save = async () => {
+    setPending(true);
+    setSaved(false);
+    try {
       const ok = await authenticate(async (auth) => {
         const updates: Array<[string, string]> = [
           ["quiet_start", quietStart],
@@ -859,8 +894,13 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
         }
         return { ok: true };
       });
-      if (ok) router.refresh();
-    });
+      if (ok) {
+        setSaved(true);
+        router.refresh();
+      }
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
@@ -922,9 +962,12 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
           Shift the Islamic (Umm al-Qura) date by ±3 days to match your local moon-sighting authority.
         </p>
       </div>
-      <button onClick={save} disabled={pending} className="px-6 py-3 rounded-xl bg-zinc-900 text-white font-medium">
-        Save
-      </button>
+      <div className="flex items-center gap-3">
+        <button onClick={save} disabled={pending} className="px-6 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-50">
+          {pending ? "Saving…" : "Save"}
+        </button>
+        {saved && <span className="text-emerald-600 text-sm">✓ Saved</span>}
+      </div>
       {modal}
     </div>
   );

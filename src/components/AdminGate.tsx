@@ -1,67 +1,138 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useParents } from "./PinProviders";
-import { useRequestPin, usePinAuth } from "./PinPad";
+import { usePinAuth, PinPadModal } from "./PinPad";
 import type { Member, MemberColor } from "@/lib/types";
 import { COLOR_CLASSES } from "@/lib/types";
 
 export type AdminAuth = { by: number; pin: string };
 
-/** Hook: obtain an admin auth (parent id + PIN) before performing a
- *  parent-only action. Prompts parent picker if there are multiple parents;
- *  reuses cached PIN if available; loops on invalid PIN. */
+type Executor = (auth: AdminAuth) => Promise<{ ok: boolean; reason?: string }>;
+
+/** Hook: obtain an admin auth (parent id + PIN) before running a parent-only
+ *  action. Renders its own combined "which parent + PIN" modal.
+ *
+ *  Reliability notes:
+ *  - Does NOT use useTransition — that has been observed to interact badly
+ *    with awaited state updates in React 19 when saved inside a form's
+ *    save handler.
+ *  - Returns a Promise<boolean> so callers can `await authenticate(...)`.
+ */
 export function useAdminAuth() {
   const parents = useParents();
-  const requestPin = useRequestPin();
-  const { getPin } = usePinAuth();
-  const [pickerState, setPickerState] = useState<{
-    resolve: (m: Member | null) => void;
-  } | null>(null);
+  const { getPin, savePin, clear } = usePinAuth();
+  const [state, setState] = useState<null | {
+    parent: Member | null; // null = still picking (only when 2+ parents)
+    executor: Executor;
+    resolve: (ok: boolean) => void;
+  }>(null);
+  const [error, setError] = useState<string | null>(null);
+  const runningRef = useRef(false);
 
-  const authenticate = useCallback(
-    async (
-      executor: (auth: AdminAuth) => Promise<{ ok: boolean; reason?: string }>
-    ): Promise<boolean> => {
-      if (parents.length === 0) {
-        alert("Add a parent first — admin actions require parent approval.");
-        return false;
-      }
-      let parent: Member | null = parents[0];
-      if (parents.length > 1) {
-        // Prefer a parent that we already have a cached PIN for.
-        const cached = parents.find((p) => getPin(p.id));
-        if (cached) parent = cached;
-        else {
-          parent = await new Promise<Member | null>((resolve) => setPickerState({ resolve }));
-          if (!parent) return false;
+  // Run the executor with (parent, pin). Handles success (cache pin, close,
+  // resolve true), failure (clear cache, show error, keep modal open for
+  // retry).
+  const run = useCallback(
+    async (parent: Member, pin: string, executor: Executor, resolve: (ok: boolean) => void) => {
+      if (runningRef.current) return;
+      runningRef.current = true;
+      try {
+        const result = await executor({ by: parent.id, pin });
+        if (result.ok) {
+          savePin(parent.id, pin);
+          setState(null);
+          setError(null);
+          resolve(true);
+        } else {
+          clear(parent.id);
+          setError(result.reason ?? "pin_invalid");
+          // stay open so user can retry
         }
+      } finally {
+        runningRef.current = false;
       }
-      const ok = await requestPin(parent, "Admin action — parent PIN", async (pin) => {
-        return await executor({ by: parent!.id, pin: pin || "" });
-      });
-      return ok;
     },
-    [parents, getPin, requestPin]
+    [savePin, clear]
   );
 
-  const modal = pickerState ? (
-    <ParentPicker
-      parents={parents}
-      onPick={(m) => {
-        pickerState.resolve(m);
-        setPickerState(null);
-      }}
-    />
-  ) : null;
+  const authenticate = useCallback(
+    (executor: Executor): Promise<boolean> => {
+      return new Promise<boolean>((resolve) => {
+        if (parents.length === 0) {
+          alert("Add a parent first — admin actions require parent approval.");
+          resolve(false);
+          return;
+        }
+
+        // Fast path: any parent already has a cached (unexpired) PIN.
+        const cached = parents.find((p) => getPin(p.id));
+        if (cached) {
+          const pin = getPin(cached.id)!;
+          void run(cached, pin, executor, resolve);
+          return;
+        }
+
+        // No cache → open the modal. If only one parent, skip the picker.
+        const initial: Member | null = parents.length === 1 ? parents[0] : null;
+        setError(null);
+        setState({ parent: initial, executor, resolve });
+      });
+    },
+    [parents, getPin, run]
+  );
+
+  const pickParent = (p: Member) => {
+    setError(null);
+    setState((s) => (s ? { ...s, parent: p } : s));
+  };
+
+  const submitPin = (pin: string) => {
+    if (!state || !state.parent) return;
+    void run(state.parent, pin, state.executor, state.resolve);
+  };
+
+  const cancel = () => {
+    if (!state) return;
+    const resolver = state.resolve;
+    setState(null);
+    setError(null);
+    resolver(false);
+  };
+
+  let modal: React.ReactNode = null;
+  if (state) {
+    if (!state.parent) {
+      modal = <ParentPicker parents={parents} onPick={pickParent} onCancel={cancel} />;
+    } else {
+      modal = (
+        <PinPadModal
+          key={state.parent.id}
+          member={state.parent}
+          purpose="Admin action — parent PIN"
+          error={error}
+          onSubmit={submitPin}
+          onCancel={cancel}
+        />
+      );
+    }
+  }
 
   return { authenticate, modal };
 }
 
-function ParentPicker({ parents, onPick }: { parents: Member[]; onPick: (m: Member | null) => void }) {
+function ParentPicker({
+  parents,
+  onPick,
+  onCancel,
+}: {
+  parents: Member[];
+  onPick: (m: Member) => void;
+  onCancel: () => void;
+}) {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50 fade-in" onClick={() => onPick(null)} />
+      <div className="absolute inset-0 bg-black/50 fade-in" onClick={onCancel} />
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md mx-6 overflow-hidden fade-in">
         <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between">
           <div>
@@ -69,8 +140,8 @@ function ParentPicker({ parents, onPick }: { parents: Member[]; onPick: (m: Memb
             <div className="text-sm text-zinc-500">Choose the parent authorizing this action.</div>
           </div>
           <button
-            onClick={() => onPick(null)}
-            className="w-11 h-11 rounded-full text-2xl text-zinc-500 hover:bg-zinc-100"
+            onClick={onCancel}
+            className="w-12 h-12 rounded-full text-3xl text-zinc-500 hover:bg-zinc-100"
             aria-label="Cancel"
           >
             ×
