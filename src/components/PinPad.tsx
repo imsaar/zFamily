@@ -201,9 +201,7 @@ export function PinPromptProvider({ children, hasPinByMember }: {
 
   const request = useCallback(
     (member: Member, purpose: string): Promise<string | null> => {
-      // If member doesn't have a PIN, skip prompt.
       if (!hasPinByMember[member.id]) return Promise.resolve("");
-      // If we have a cached PIN, reuse.
       const cached = getPin(member.id);
       if (cached) return Promise.resolve(cached);
       return new Promise((resolve) => {
@@ -216,7 +214,6 @@ export function PinPromptProvider({ children, hasPinByMember }: {
 
   const onSubmit = (pin: string) => {
     if (!active) return;
-    // Cache immediately; caller can clear if server rejects (via setError).
     savePin(active.member.id, pin);
     const resolver = active.resolve;
     setActive(null);

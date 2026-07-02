@@ -97,14 +97,12 @@ export function MobileChoreList({
                   return (
                     <button
                       key={vid}
-                      onClick={() =>
-                        start(async () => {
-                          const ok = await requestPin(v, "Verify chore", async (pin) => {
-                            return await verifyCompletionAction(comp.id, vid, pin || null);
-                          });
-                          if (ok) router.refresh();
-                        })
-                      }
+                      onClick={async () => {
+                        const ok = await requestPin(v, "Verify chore", async (pin) => {
+                          return await verifyCompletionAction(comp.id, vid, pin || null);
+                        });
+                        if (ok) router.refresh();
+                      }}
                       disabled={pending}
                       className={`h-12 min-w-16 px-4 rounded-full ${vcol.bg} text-white text-base font-medium flex items-center gap-1.5 active:opacity-80`}
                     >

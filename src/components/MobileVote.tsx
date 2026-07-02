@@ -145,14 +145,12 @@ function MobileProposalCard({
           return (
             <button
               key={m.id}
-              onClick={() =>
-                start(async () => {
-                  const ok = await requestPin(m, voted ? "Withdraw vote" : "Cast vote", async (pin) => {
-                    return await toggleVoteAction(proposal.id, m.id, !voted, pin || null);
-                  });
-                  if (ok) router.refresh();
-                })
-              }
+              onClick={async () => {
+                const ok = await requestPin(m, voted ? "Withdraw vote" : "Cast vote", async (pin) => {
+                  return await toggleVoteAction(proposal.id, m.id, !voted, pin || null);
+                });
+                if (ok) router.refresh();
+              }}
               disabled={pending || voting}
               className={`flex flex-col items-center py-2 rounded-xl transition-all ${
                 voted ? `${color.bg} text-white` : `${color.bgSoft} ${color.text} opacity-50 grayscale`

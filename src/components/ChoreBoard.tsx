@@ -282,17 +282,20 @@ function PinVerifyPill({
   disabled: boolean;
 }) {
   const requestPin = useRequestPin();
-  const [busy, start] = useTransition();
+  const [busy, setBusy] = useState(false);
   const vcol = COLOR_CLASSES[verifier.color as MemberColor] ?? COLOR_CLASSES.sky;
   return (
     <button
-      onClick={() => {
-        start(async () => {
+      onClick={async () => {
+        setBusy(true);
+        try {
           const ok = await requestPin(verifier, "Verify chore", async (pin) => {
             return await verifyCompletionAction(completionId, verifier.id, pin || null);
           });
           if (ok) onDone();
-        });
+        } finally {
+          setBusy(false);
+        }
       }}
       disabled={disabled || busy}
       className={`h-11 min-w-16 px-4 rounded-full ${vcol.bg} text-white text-base font-medium flex items-center gap-1.5 active:opacity-80`}
@@ -373,7 +376,7 @@ function RewardsShelf({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [busy, start] = useTransition();
+  const [busy, setBusy] = useState(false);
   const children = members.filter((m) => m.role === "child");
   const parents = members.filter((m) => m.role === "parent");
   const [activeMember, setActiveMember] = useState<number | null>(children[0]?.id ?? null);
@@ -381,7 +384,7 @@ function RewardsShelf({
   const balance = activeMember != null ? (balances.get(activeMember) ?? 0) : 0;
 
   const requestPin = useRequestPin();
-  const redeem = (rewardId: number, cost: number) => {
+  const redeem = async (rewardId: number, cost: number) => {
     if (activeMember == null) return;
     if (parents.length === 0) {
       alert("Add a parent first — rewards need parent approval.");
@@ -397,7 +400,8 @@ function RewardsShelf({
     const approver = chooseParent();
     if (!approver) return;
     if (!confirm(`Redeem for ${cost} pts?`)) return;
-    start(async () => {
+    setBusy(true);
+    try {
       const ok = await requestPin(approver, "Approve reward redemption", async (pin) => {
         return await redeemRewardAction({
           rewardId,
@@ -407,7 +411,9 @@ function RewardsShelf({
         });
       });
       if (ok) router.refresh();
-    });
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (

@@ -141,14 +141,12 @@ export function PersonalHome({
                           return (
                             <button
                               key={vid}
-                              onClick={() =>
-                                start(async () => {
-                                  const ok = await requestPin(v, "Verify chore", async (pin) => {
-                                    return await verifyCompletionAction(comp.id, vid, pin || null);
-                                  });
-                                  if (ok) router.refresh();
-                                })
-                              }
+                              onClick={async () => {
+                                const ok = await requestPin(v, "Verify chore", async (pin) => {
+                                  return await verifyCompletionAction(comp.id, vid, pin || null);
+                                });
+                                if (ok) router.refresh();
+                              }}
                               disabled={pending}
                               className={`h-11 min-w-16 px-4 rounded-full ${vcol.bg} text-white text-base font-medium flex items-center gap-1.5 active:opacity-80`}
                             >
@@ -218,14 +216,12 @@ export function PersonalHome({
                       <div className="text-xs text-zinc-500">{p.votes.length} vote{p.votes.length === 1 ? "" : "s"}</div>
                     </div>
                     <button
-                      onClick={() =>
-                        start(async () => {
-                          const ok = await requestPin(member, voted ? "Withdraw vote" : "Cast vote", async (pin) => {
-                            return await toggleVoteAction(p.id, member.id, !voted, pin || null);
-                          });
-                          if (ok) router.refresh();
-                        })
-                      }
+                      onClick={async () => {
+                        const ok = await requestPin(member, voted ? "Withdraw vote" : "Cast vote", async (pin) => {
+                          return await toggleVoteAction(p.id, member.id, !voted, pin || null);
+                        });
+                        if (ok) router.refresh();
+                      }}
                       disabled={pending}
                       className={`h-11 min-w-16 px-4 rounded-full font-medium text-base ${
                         voted ? `${color.bg} text-white` : "bg-zinc-100 text-zinc-600"

@@ -143,14 +143,12 @@ export function TodaySidebar({
                               return (
                                 <button
                                   key={vid}
-                                  onClick={() =>
-                                    start(async () => {
-                                      const ok = await requestPin(v, "Verify chore", async (pin) => {
-                                        return await verifyCompletionAction(comp.id, vid, pin || null);
-                                      });
-                                      if (ok) router.refresh();
-                                    })
-                                  }
+                                  onClick={async () => {
+                                    const ok = await requestPin(v, "Verify chore", async (pin) => {
+                                      return await verifyCompletionAction(comp.id, vid, pin || null);
+                                    });
+                                    if (ok) router.refresh();
+                                  }}
                                   disabled={pending}
                                   className={`h-10 min-w-14 px-3 rounded-full ${vcol.bg} text-white text-sm flex items-center gap-1.5 active:opacity-80`}
                                 >

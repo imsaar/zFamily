@@ -652,14 +652,12 @@ function ProposalRow({
           return (
             <button
               key={m.id}
-              onClick={() =>
-                startVote(async () => {
-                  const ok = await requestPin(m, voted ? "Withdraw vote" : "Cast vote", async (pin) => {
-                    return await toggleVoteAction(proposal.id, m.id, !voted, pin || null);
-                  });
-                  if (ok) router.refresh();
-                })
-              }
+              onClick={async () => {
+                const ok = await requestPin(m, voted ? "Withdraw vote" : "Cast vote", async (pin) => {
+                  return await toggleVoteAction(proposal.id, m.id, !voted, pin || null);
+                });
+                if (ok) router.refresh();
+              }}
               disabled={voting || pending}
               aria-label={`${voted ? "Withdraw" : "Cast"} vote for ${m.name}`}
               className={`w-11 h-11 rounded-full flex items-center justify-center text-xl transition-all ${
