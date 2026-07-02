@@ -4,7 +4,7 @@ A wall-mounted family hub — calendar, chores, meals, shopping — designed to 
 
 Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 
-![Week view](.preview-week.png)
+![Family home](docs/screenshots/home.png)
 
 ## Table of contents
 
