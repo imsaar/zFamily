@@ -271,15 +271,15 @@ function ShoppingRow({ item }: { item: ShoppingItem }) {
           }`}
         >
           <div
-            className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${
-              item.checked ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-300 bg-white"
+            className={`w-6 h-6 rounded-sm border-2 flex items-center justify-center shrink-0 ${
+              item.checked ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-400 bg-white"
             }`}
           >
-            {item.checked && (
+            {item.checked ? (
               <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3">
                 <path d="M4 10l4 4 8-8" strokeLinecap="square" strokeLinejoin="miter" />
               </svg>
-            )}
+            ) : null}
           </div>
           <span className={`flex-1 text-base ${item.checked ? "line-through" : ""}`}>{item.name}</span>
           {item.quantity && <span className="text-sm text-zinc-500">{item.quantity}</span>}
