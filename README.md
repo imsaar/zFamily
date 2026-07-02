@@ -15,10 +15,11 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 - [Production install (Linux kiosk)](#production-install-linux-kiosk)
 - [Google Calendar setup](#google-calendar-setup)
 - [Configuration reference](#configuration-reference)
+- [Authentication (PINs)](#authentication-pins)
 - [Data & backup](#data--backup)
 - [Mobile companion (PWA)](#mobile-companion-pwa)
 - [Screensaver & quiet hours](#screensaver--quiet-hours)
-- [Routes](#routes)
+- [Testing](#testing)
 - [Project layout](#project-layout)
 - [Development tips](#development-tips)
 - [Troubleshooting](#troubleshooting)
@@ -26,7 +27,7 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 
 ## What's in the box
 
-- **Family home dashboard** with Quranic verse of the day (Arabic + English translation, deterministic per date), Hijri (Umm al-Qura) date with moon-sighting correction, weekly overview, and quick tiles.
+- **Family home dashboard** with Quranic verse of the day (Arabic + English translation, deterministic per date), Hijri (Umm al-Qura) date with moon-sighting correction, weekly overview, today's breakfast/lunch/dinner panel, and quick tiles.
 - **Weekly + monthly calendar** with per-member color coding, all-day strip, hourly grid, red "now" line.
 - **Recurring events** — locally-created events support weekly, monthly, or quarterly recurrence (client-expanded from RRULE).
 - **Chore board** with pending → verified two-step (parents verify children; parents peer-verify each other), big touch check-off circles, daily/weekly/weekend recurrence, points, streaks (🔥), weekly progress bars.
@@ -35,10 +36,11 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 - **Shopping list** — auto-populated from planned meals, shared with the mobile companion.
 - **PIN authentication** — 4-digit PIN per member with on-screen numeric keypad. Required for personal actions (verify/vote/redeem) and admin actions (settings/rewards/chores/family). First-launch gate forces parents to set a PIN.
 - **Personal views** at `/me/[memberId]` — each member has their own screen with their chores, schedule, meal vote panel, and rewards. Reverts to family home after configurable idle (default 2 min).
-- **Weather** via Open-Meteo (no API key), header widget + screensaver display.
+- **Weather** via Open-Meteo (no API key), with **city/state search** that auto-fills coordinates and IANA timezone in one tap. Header widget + screensaver display.
 - **Google Calendar sync** per family member with incremental sync tokens.
 - **Screensaver** with quiet-hour schedule, clock + next event + weather, tap-to-wake.
 - **Mobile companion PWA** at `/m` — quick chore check-off, event add, meal voting, and shopping list from any phone.
+- **Playwright end-to-end tests** covering critical flows (PIN gates, weather save + header refresh, chore verify, home meal panel).
 
 ## Screens
 
@@ -216,7 +218,10 @@ Personal-scope OAuth apps in Google Cloud stay in "testing" mode indefinitely un
 
 | Setting | Where | Default | Notes |
 |---------|-------|---------|-------|
-| Weather location | Weather | San Francisco | Label + lat/lon (Open-Meteo, no key) |
+| City search | Weather | — | Type a city/state → one-tap fill of label, lat, lon, and timezone (Open-Meteo geocoder, no key) |
+| Weather label | Weather | San Francisco | Free text shown in the header |
+| Latitude / longitude | Weather | 37.77 / -122.42 | Auto-filled by city search; editable |
+| Timezone (IANA) | Weather | `America/Los_Angeles` | Auto-filled by city search; used for the weather fetch |
 | Quiet hours | Display | 21:00 – 07:00 | Auto-activates screensaver during window |
 | Idle timeout | Display | 5 min | Screensaver kicks in after this long idle |
 | Screensaver mode | Display | Clock + next | Clock only, or clock + next event + weather |
@@ -314,68 +319,94 @@ Modes:
 
 Tap anywhere to dismiss. During quiet hours the display is fully black to reduce room-light pollution.
 
-## Routes
+## Testing
 
-| Method | Path | What |
-|--------|------|------|
-| GET | `/` | Kiosk week view |
-| GET | `/month` | Kiosk month view |
-| GET | `/chores` | Kiosk chore board |
-| GET | `/meals` | Kiosk meal plan + shopping |
-| GET | `/settings` | Kiosk settings |
-| GET | `/m` | Mobile PWA home |
-| GET | `/m/chores/[memberId]` | Mobile chores per member |
-| GET | `/m/event` | Mobile quick-add event |
-| GET | `/m/shopping` | Mobile shopping list |
-| GET | `/api/auth/google/start?memberId=X` | Begin Google OAuth for member X |
-| GET | `/api/auth/google/callback` | OAuth redirect target |
-| POST | `/api/sync` | Pull all linked Google calendars now |
+The repo ships with a Playwright suite covering the critical flows. Tests run against an isolated `.data-e2e/` DB on port 3011, so they never touch your real family data.
+
+```bash
+npm run test:e2e         # headless, both desktop + mobile projects
+npm run test:e2e:ui      # interactive Playwright UI mode
+```
+
+Current coverage (17 tests):
+
+- **Smoke** — every top-level route returns 200 and renders distinctive content.
+- **Weather save** — the reported "can't save" bug: fill label → Save → parent picker → PIN pad → DB updated. Wrong PIN retries. **Header widget refreshes** after city change.
+- **Display save** — Hijri offset saves; PIN cache lets a follow-up save skip the picker.
+- **Chore verify** — pending completion → verify pill → PIN pad → DB has `verified_at` and `verified_by`.
+- **Home meal panel** — three-slot layout, meals appear when planned, "Not planned" when empty.
+
+Global setup pre-seeds Mom (PIN `1111`) and Dad (PIN `2222`), so tests skip the first-launch PIN gate.
 
 ## Project layout
 
 ```
 zfamily/
-├── SPEC.md                  # Full design doc
-├── README.md                # ← you are here
+├── SPEC.md                       # Full design doc
+├── README.md                     # ← you are here
+├── CLAUDE.md                     # Notes for Claude Code
+├── playwright.config.ts
 ├── next.config.ts
 ├── package.json
+├── docs/screenshots/             # Committed screenshots (used by README)
 ├── public/
-│   ├── manifest.webmanifest # PWA manifest
-│   └── icon-*.png           # PWA icons (add your own)
+│   ├── manifest.webmanifest      # PWA manifest
+│   └── icon-*.png                # PWA icons (add your own)
+├── tests/e2e/                    # Playwright specs + helpers + global-setup
 └── src/
     ├── app/
-    │   ├── layout.tsx       # Root layout (html/body only)
+    │   ├── layout.tsx            # Root layout (html/body/globals only)
     │   ├── globals.css
-    │   ├── actions.ts       # Server actions (all mutations)
-    │   ├── (kiosk)/         # Route group: display UI
-    │   │   ├── layout.tsx   # Header + BottomNav + Screensaver
-    │   │   ├── page.tsx     # Week view
+    │   ├── actions.ts            # Server actions (all mutations)
+    │   ├── (kiosk)/              # Route group: kiosk display UI
+    │   │   ├── layout.tsx        # Header + BottomNav + Screensaver + PinSetupGate
+    │   │   ├── page.tsx          # Family home dashboard (verse, week, today's meals)
+    │   │   ├── week/page.tsx
     │   │   ├── month/page.tsx
     │   │   ├── chores/page.tsx
     │   │   ├── meals/page.tsx
-    │   │   └── settings/page.tsx
-    │   ├── m/               # Route group: mobile PWA
+    │   │   ├── settings/page.tsx
+    │   │   └── me/[memberId]/page.tsx
+    │   ├── m/                    # Route group: mobile PWA
     │   │   ├── layout.tsx
     │   │   ├── page.tsx
     │   │   ├── chores/[memberId]/page.tsx
     │   │   ├── event/page.tsx
-    │   │   └── shopping/page.tsx
+    │   │   ├── shopping/page.tsx
+    │   │   └── vote/page.tsx
     │   └── api/
     │       ├── sync/route.ts
     │       └── auth/google/…
-    ├── components/          # React components (client + server)
-    └── lib/                 # DB + domain logic (server-only)
-        ├── db.ts            # SQLite bootstrap + schema
-        ├── types.ts         # Shared types + color palette
+    ├── components/               # React components (kiosk + mobile + shared)
+    │   ├── PinPad.tsx            # 4-digit keypad + PinPromptProvider + auth cache
+    │   ├── AdminGate.tsx         # Parent-picker + PIN gate for admin actions
+    │   ├── PinSetupGate.tsx      # First-launch full-screen PIN setup blocker
+    │   └── …
+    └── lib/                      # DB + domain logic (server-only)
+        ├── db.ts                 # SQLite bootstrap + migrations
+        ├── types.ts              # Shared types + color palette
         ├── dates.ts
         ├── members.ts
-        ├── events.ts
-        ├── chores.ts
-        ├── meals.ts
-        ├── settings.ts
-        ├── weather.ts
-        └── google.ts        # Calendar OAuth + incremental sync
+        ├── events.ts             # + expandRecurrences (client-side RRULE expander)
+        ├── chores.ts             # + verify / pending / eligible verifiers
+        ├── meals.ts              # + favorites + voting + apply-winners
+        ├── rewards.ts            # points balance + parent-approved redemption
+        ├── pins.ts               # scrypt-hashed PINs, timing-safe verify
+        ├── settings.ts           # + getTimezone() helper
+        ├── weather.ts            # Open-Meteo + location-keyed cache
+        ├── geocode.ts            # City search → lat/lon/tz
+        ├── hijri.ts              # Umm al-Qura calendar + offset
+        ├── verses.ts             # Curated 50-verse library, deterministic pick
+        └── google.ts             # Calendar OAuth + incremental sync
 ```
+
+All endpoints:
+
+| Method | Path | What |
+|--------|------|------|
+| GET  | `/api/auth/google/start?memberId=X` | Begin Google OAuth for member X |
+| GET  | `/api/auth/google/callback` | OAuth redirect target |
+| POST | `/api/sync` | Pull all linked Google calendars now (also accepts GET) |
 
 ## Development tips
 
@@ -402,6 +433,18 @@ curl -X POST http://localhost:3000/api/sync
   --headless --disable-gpu --hide-scrollbars --window-size=1920,1080 \
   --screenshot=preview.png http://localhost:3000/
 ```
+
+**Run the Playwright suite:**
+```bash
+npm run test:e2e         # headless; expects nothing on port 3011
+npm run test:e2e:ui      # interactive
+```
+
+**PIN pattern (when adding new gated actions):**
+
+- Personal action → wrap the click handler with `useRequestPin(member, purpose, executor)`.
+- Admin action → wrap with `useAdminAuth().authenticate(executor)`.
+- **Do not put either inside `useTransition`'s `start(async () => …)`** — React 19 defers the modal state update inside async transitions and the PIN pad never opens. Use plain `useState<boolean>` for `pending`.
 
 ## Troubleshooting
 
