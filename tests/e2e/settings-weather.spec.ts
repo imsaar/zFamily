@@ -32,6 +32,34 @@ test.describe("Weather settings save", () => {
     expect(readSetting("weather_label")).toBe("Zephyr Cove");
   });
 
+  test("header widget updates after changing city", async ({ page }) => {
+    // Start with SF in the header.
+    writeSetting("weather_label", "San Francisco");
+    writeSetting("weather_lat", "37.7749");
+    writeSetting("weather_lon", "-122.4194");
+    writeSetting("weather_tz", "America/Los_Angeles");
+
+    await page.goto("/week");
+    await expect(page.locator("header")).toContainText(/San Francisco/);
+
+    // Change city in settings.
+    await page.goto("/settings");
+    await page.getByRole("button", { name: /🌤️ Weather/i }).click();
+    await page.locator("input").nth(1).fill("Reykjavík");
+    await page.locator("input").nth(2).fill("64.1466"); // lat
+    await page.locator("input").nth(3).fill("-21.9426"); // lon
+    await page.locator("input").nth(4).fill("Atlantic/Reykjavik"); // tz
+
+    await page.getByRole("button", { name: /^Save$/ }).click();
+    await page.getByRole("button").filter({ hasText: /Tap to select/ }).first().click();
+    await enterPin(page, "1111");
+    await expect(page.getByText(/✓ Saved/i)).toBeVisible({ timeout: 10_000 });
+
+    // Navigate away and back — the header should now show Reykjavík.
+    await page.goto("/week");
+    await expect(page.locator("header")).toContainText(/Reykjavík/, { timeout: 10_000 });
+  });
+
   test("rejects wrong PIN and allows retry", async ({ page }) => {
     await page.goto("/settings");
     await page.getByRole("button", { name: /🌤️ Weather/i }).click();

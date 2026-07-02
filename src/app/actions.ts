@@ -8,6 +8,7 @@ import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards"
 import { setSetting } from "@/lib/settings";
 import { requirePin, setMemberPin, clearMemberPin, memberHasPin, verifyMemberPin } from "@/lib/pins";
 import { searchCity } from "@/lib/geocode";
+import { resetWeatherCache } from "@/lib/weather";
 import {
   createMeal,
   updateMeal,
@@ -29,12 +30,15 @@ import type { Ingredient, MealSlot } from "@/lib/meals";
 import type { MemberColor, MemberRole } from "@/lib/types";
 
 function bust() {
-  revalidatePath("/");
+  // Layout-scoped revalidation refreshes the shared kiosk chrome (header
+  // + bottom nav) so things like the weather widget update immediately.
+  revalidatePath("/", "layout");
+  revalidatePath("/week");
   revalidatePath("/month");
   revalidatePath("/chores");
   revalidatePath("/meals");
   revalidatePath("/settings");
-  revalidatePath("/m");
+  revalidatePath("/m", "layout");
 }
 
 // Guard used by any admin action. `admin.by` must be a parent; if that parent
@@ -160,6 +164,9 @@ export async function updateSettingAction(key: string, value: string, admin?: Ad
   const gate = await requireParentAuth(admin);
   if (!gate.ok) return gate;
   setSetting(key, value);
+  // Any weather-related change drops the 10-min cache so the header
+  // widget updates on the next render.
+  if (key.startsWith("weather_")) resetWeatherCache();
   bust();
   return { ok: true as const };
 }

@@ -11,7 +11,12 @@ export type WeatherSnapshot = {
   fetchedAt: number;
 };
 
-let cache: { data: WeatherSnapshot; expiresAt: number } | null = null;
+let cache: { data: WeatherSnapshot; expiresAt: number; key: string } | null = null;
+
+/** Explicitly drop the cache — call after weather settings change. */
+export function resetWeatherCache() {
+  cache = null;
+}
 
 // https://open-meteo.com/en/docs#weathervariables
 const WMO_MAP: Record<number, { icon: string; condition: string }> = {
@@ -44,13 +49,16 @@ function descCode(code: number) {
 }
 
 export async function getWeather(): Promise<WeatherSnapshot | null> {
-  if (cache && cache.expiresAt > Date.now()) return cache.data;
-
   const lat = getSetting("weather_lat");
   const lon = getSetting("weather_lon");
   const label = getSetting("weather_label") ?? "";
   const tz = getSetting("weather_tz") || "auto";
   if (!lat || !lon) return null;
+
+  // Cache key includes every field that would change the fetched payload —
+  // so changing city in Settings invalidates immediately.
+  const key = `${lat}|${lon}|${tz}|${label}`;
+  if (cache && cache.expiresAt > Date.now() && cache.key === key) return cache.data;
 
   const url = new URL("https://api.open-meteo.com/v1/forecast");
   url.searchParams.set("latitude", lat);
@@ -88,7 +96,7 @@ export async function getWeather(): Promise<WeatherSnapshot | null> {
       forecast,
       fetchedAt: Date.now(),
     };
-    cache = { data: snap, expiresAt: Date.now() + 10 * 60 * 1000 };
+    cache = { data: snap, expiresAt: Date.now() + 10 * 60 * 1000, key };
     return snap;
   } catch {
     return null;
