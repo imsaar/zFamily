@@ -271,7 +271,7 @@ function ShoppingRow({ item }: { item: ShoppingItem }) {
           }`}
         >
           <div
-            className={`w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 ${
+            className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${
               item.checked ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-300 bg-white"
             }`}
           >
