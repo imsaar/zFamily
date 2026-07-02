@@ -111,8 +111,8 @@ function Row({ item }: { item: ShoppingItem }) {
           }`}
         >
           {item.checked && (
-            <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3">
-              <path d="M4 10l4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
+            <svg viewBox="0 0 20 20" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth="3">
+              <path d="M4 10l4 4 8-8" strokeLinecap="square" strokeLinejoin="miter" />
             </svg>
           )}
         </div>
