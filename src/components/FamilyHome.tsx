@@ -5,6 +5,13 @@ import { format, isToday } from "date-fns";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
 import { COLOR_CLASSES } from "@/lib/types";
 import type { Verse } from "@/lib/verses";
+import type { Meal, MealSlot } from "@/lib/meals";
+
+const SLOTS: Array<{ key: MealSlot; label: string; icon: string }> = [
+  { key: "breakfast", label: "Breakfast", icon: "🥣" },
+  { key: "lunch", label: "Lunch", icon: "🥪" },
+  { key: "dinner", label: "Dinner", icon: "🍽️" },
+];
 
 export function FamilyHome({
   members,
@@ -14,7 +21,7 @@ export function FamilyHome({
   todayEvents,
   chorePct,
   pendingCount,
-  todayDinnerMealId,
+  todayMeals,
   voteCount,
   verse,
   hijriDate,
@@ -26,7 +33,7 @@ export function FamilyHome({
   todayEvents: EventRow[];
   chorePct: Map<number, { done: number; total: number }>;
   pendingCount: number;
-  todayDinnerMealId: number | null;
+  todayMeals: Partial<Record<MealSlot, Meal>>;
   voteCount: number;
   verse: Verse;
   hijriDate: string;
@@ -173,20 +180,42 @@ export function FamilyHome({
 
           <Link
             href="/meals"
-            className="block bg-white border border-zinc-200 rounded-2xl p-4"
+            className="block bg-white border border-zinc-200 rounded-2xl overflow-hidden"
           >
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Meals</div>
-                <div className="text-lg font-semibold mt-1">
-                  Tonight's dinner{todayDinnerMealId ? " planned ✓" : ": not set"}
-                </div>
-                {voteCount > 0 && (
-                  <div className="text-sm text-zinc-600 mt-1">🗳️ {voteCount} candidates for next week</div>
-                )}
-              </div>
-              <div className="text-zinc-400 text-2xl">›</div>
+            <div className="px-4 py-3 border-b border-zinc-100 flex items-center justify-between">
+              <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Today's meals</div>
+              <div className="text-zinc-400 text-xl leading-none">›</div>
             </div>
+            <ul className="divide-y divide-zinc-100">
+              {SLOTS.map((s) => {
+                const meal = todayMeals[s.key];
+                return (
+                  <li key={s.key} className="px-4 py-3 flex items-center gap-3">
+                    <div className="w-14 text-center">
+                      <div className="text-2xl leading-none">{meal?.icon ?? s.icon}</div>
+                      <div className="text-[10px] uppercase tracking-wide text-zinc-400 mt-1">
+                        {s.label}
+                      </div>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {meal ? (
+                        <div className="font-medium truncate">{meal.name}</div>
+                      ) : (
+                        <div className="text-zinc-400 italic text-sm">Not planned</div>
+                      )}
+                      {meal?.notes && (
+                        <div className="text-xs text-zinc-500 truncate">{meal.notes}</div>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {voteCount > 0 && (
+              <div className="px-4 py-2 text-sm text-zinc-600 bg-zinc-50 border-t border-zinc-100">
+                🗳️ {voteCount} candidate{voteCount === 1 ? "" : "s"} for next week
+              </div>
+            )}
           </Link>
 
           <div className="grid grid-cols-2 gap-3">

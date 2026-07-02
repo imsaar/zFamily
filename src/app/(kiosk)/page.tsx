@@ -2,7 +2,8 @@ import { FamilyHome } from "@/components/FamilyHome";
 import { listMembers } from "@/lib/members";
 import { listEventsInRange } from "@/lib/events";
 import { listChores, getCompletions, isDueOn, listPendingCompletions } from "@/lib/chores";
-import { listProposals, nextWeekStart, listPlanForRange } from "@/lib/meals";
+import { listProposals, nextWeekStart, listPlanForRange, getMeal } from "@/lib/meals";
+import type { Meal, MealSlot } from "@/lib/meals";
 import { verseOfDay } from "@/lib/verses";
 import { toHijri } from "@/lib/hijri";
 import { getAllSettings } from "@/lib/settings";
@@ -55,8 +56,15 @@ export default function FamilyHomePage() {
 
   const pendingCount = listPendingCompletions().length;
 
-  // Meals: today's dinner + week vote candidates
-  const plan = listPlanForRange(todayKey, format(addDays(today, 2), "yyyy-MM-dd"));
+  // Today's full meal plan (breakfast/lunch/dinner) + next week's vote candidates.
+  const plan = listPlanForRange(todayKey, todayKey);
+  const todayMeals: Partial<Record<MealSlot, Meal>> = {};
+  for (const p of plan) {
+    if (p.meal_date === todayKey) {
+      const meal = getMeal(p.meal_id);
+      if (meal) todayMeals[p.slot as MealSlot] = meal;
+    }
+  }
   const nw = nextWeekStart(today);
   const voteCount = listProposals(nw).length;
 
@@ -73,7 +81,7 @@ export default function FamilyHomePage() {
       todayEvents={todayEvents}
       chorePct={chorePct}
       pendingCount={pendingCount}
-      todayDinnerMealId={plan.find((p) => p.meal_date === todayKey && p.slot === "dinner")?.meal_id ?? null}
+      todayMeals={todayMeals}
       voteCount={voteCount}
       verse={verse}
       hijriDate={hijri.formatted}
