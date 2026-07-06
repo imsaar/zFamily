@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { Member, MemberColor, EventRow, ChoreCompletion, Reward } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, displayName } from "@/lib/types";
 import type { ChoreWithAssignees } from "@/lib/chores";
 import type { Meal, ProposalWithVotes } from "@/lib/meals";
 import { toggleChoreAction, verifyCompletionAction, toggleVoteAction, proposeMealAction } from "@/app/actions";
@@ -58,12 +58,20 @@ export function PersonalHome({
           <Link href="/" className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-2xl">
             ‹
           </Link>
-          <div className={`w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-4xl shrink-0`}>
-            {member.emoji ?? member.name[0]}
-          </div>
+          {member.photo_updated_at ? (
+            <img
+              src={`/api/avatar/${member.id}?v=${member.photo_updated_at}`}
+              alt={member.name}
+              className="w-16 h-16 rounded-full object-cover bg-white/20 shrink-0"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-4xl shrink-0">
+              {member.emoji ?? member.name[0]}
+            </div>
+          )}
           <div className="flex-1">
             <div className="text-3xl font-semibold flex items-center gap-3">
-              {member.name}'s view
+              {displayName(member)}&apos;s view
               {streak > 0 && <span className="text-lg bg-white/20 px-2.5 py-0.5 rounded-full">🔥 {streak}</span>}
               {member.role === "child" && (
                 <span className="text-lg bg-white/20 px-2.5 py-0.5 rounded-full">🏆 {balance.balance}</span>

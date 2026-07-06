@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { format, isToday } from "date-fns";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, displayName } from "@/lib/types";
+import { MemberAvatar } from "./MemberAvatar";
 import type { Verse } from "@/lib/verses";
 import type { Meal, MealSlot } from "@/lib/meals";
 
@@ -148,11 +149,9 @@ export function FamilyHome({
                   href={`/me/${m.id}`}
                   className={`rounded-2xl border-2 ${color.border} bg-white p-4 flex items-center gap-3 active:bg-zinc-50 shadow-sm`}
                 >
-                  <div className={`w-14 h-14 rounded-full ${color.bg} flex items-center justify-center text-2xl text-white shrink-0`}>
-                    {m.emoji ?? m.name[0]}
-                  </div>
+                  <MemberAvatar member={m} className="w-14 h-14 rounded-full shrink-0" textClass="text-2xl" />
                   <div className="min-w-0 flex-1">
-                    <div className="font-semibold truncate">{m.name}</div>
+                    <div className="font-semibold truncate">{displayName(m)}</div>
                     <div className="text-xs text-zinc-500">
                       {p.total > 0 ? `${p.done}/${p.total} chores · ${pct}%` : m.role === "child" ? "No chores today" : " "}
                     </div>

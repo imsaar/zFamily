@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Clock } from "./Clock";
-import type { Member, MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import type { Member } from "@/lib/types";
+import { displayName } from "@/lib/types";
+import { MemberAvatar } from "./MemberAvatar";
 import type { WeatherSnapshot } from "@/lib/weather";
 
 export function Header({
@@ -19,7 +20,7 @@ export function Header({
 
       <div className="flex items-center gap-3">
         {members.map((m) => (
-          <MemberAvatar key={m.id} member={m} />
+          <MemberBadge key={m.id} member={m} />
         ))}
       </div>
 
@@ -42,18 +43,16 @@ export function Header({
   );
 }
 
-function MemberAvatar({ member }: { member: Member }) {
-  const color = COLOR_CLASSES[member.color as MemberColor] ?? COLOR_CLASSES.sky;
-  const initial = (member.name[0] ?? "?").toUpperCase();
+function MemberBadge({ member }: { member: Member }) {
+  const label = displayName(member);
   return (
     <Link href={`/me/${member.id}`} className="flex flex-col items-center gap-1 active:opacity-80">
-      <div
-        className={`w-14 h-14 rounded-full ${color.bg} flex items-center justify-center text-2xl text-white shadow-sm`}
-        title={`Open ${member.name}'s view`}
-      >
-        {member.emoji ?? initial}
-      </div>
-      <div className="text-xs text-zinc-600 max-w-16 truncate">{member.name}</div>
+      <MemberAvatar
+        member={member}
+        className="w-14 h-14 rounded-full shadow-sm"
+        textClass="text-2xl"
+      />
+      <div className="text-xs text-zinc-600 max-w-16 truncate" title={`Open ${label}'s view`}>{label}</div>
     </Link>
   );
 }

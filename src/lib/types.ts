@@ -40,15 +40,22 @@ export type MemberRole = "parent" | "child";
 export type Member = {
   id: number;
   name: string;
+  nickname: string | null;
   color: MemberColor;
   emoji: string | null;
   role: MemberRole;
   pin_hash: string | null;
+  photo_updated_at: number | null;
   google_sub: string | null;
   google_calendar_id: string | null;
   sort_order: number;
   created_at: number;
 };
+
+/** Friendly label for a member: the nickname if they have one, else their name. */
+export function displayName(m: { name: string; nickname?: string | null }): string {
+  return m.nickname?.trim() || m.name;
+}
 
 export type EventRow = {
   id: string;
