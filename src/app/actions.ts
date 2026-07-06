@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createLocalEvent, deleteEvent, upsertEvent, getEvent } from "@/lib/events";
 import { toggleCompletion, createChore, updateChore, deleteChore, verifyCompletion, unverifyCompletion } from "@/lib/chores";
-import { createMember, updateMember, deleteMember } from "@/lib/members";
+import { createMember, updateMember, deleteMember, setMemberPhoto, clearMemberPhoto } from "@/lib/members";
+import { factoryReset } from "@/lib/db";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting } from "@/lib/settings";
 import { requirePin, setMemberPin, clearMemberPin, memberHasPin, verifyMemberPin } from "@/lib/pins";
@@ -100,7 +101,7 @@ export async function deleteEventAction(id: string) {
   bust();
 }
 
-export async function createMemberAction(input: { name: string; color: MemberColor; emoji?: string | null; role?: MemberRole }, admin?: AdminAuth) {
+export async function createMemberAction(input: { name: string; nickname?: string | null; color: MemberColor; emoji?: string | null; role?: MemberRole }, admin?: AdminAuth) {
   const gate = await requireParentAuth(admin);
   // Bootstrap exception: allow creation when there are no members yet.
   const hasAny = ((await import("@/lib/db")).db().prepare("SELECT COUNT(*) as n FROM members").get() as { n: number }).n > 0;
@@ -110,10 +111,80 @@ export async function createMemberAction(input: { name: string; color: MemberCol
   return { ok: true as const };
 }
 
-export async function updateMemberAction(id: number, patch: { name?: string; color?: MemberColor; emoji?: string | null; role?: MemberRole }, admin?: AdminAuth) {
+// First-run family setup. Creates the whole family (and optional location) in
+// one shot. Only permitted while the family is empty — the bootstrap window —
+// so it can run without a parent PIN (no parent exists yet to authorize it).
+export async function completeFamilySetupAction(input: {
+  members: Array<{ name: string; nickname?: string | null; color: MemberColor; emoji?: string | null; role: MemberRole }>;
+  weather?: { label: string; lat: string; lon: string; tz: string } | null;
+}) {
+  const hasAny = ((await import("@/lib/db")).db().prepare("SELECT COUNT(*) as n FROM members").get() as { n: number }).n > 0;
+  if (hasAny) return { ok: false as const, reason: "already_setup" as const };
+
+  const clean = input.members.filter((m) => m.name.trim());
+  if (clean.length === 0) return { ok: false as const, reason: "need_member" as const };
+  if (!clean.some((m) => m.role === "parent")) return { ok: false as const, reason: "need_parent" as const };
+
+  for (const m of clean) {
+    createMember({ name: m.name.trim(), nickname: m.nickname?.trim() || null, color: m.color, emoji: m.emoji?.trim() || null, role: m.role });
+  }
+  if (input.weather && input.weather.lat && input.weather.lon) {
+    setSetting("weather_label", input.weather.label);
+    setSetting("weather_lat", input.weather.lat);
+    setSetting("weather_lon", input.weather.lon);
+    setSetting("weather_tz", input.weather.tz);
+    resetWeatherCache();
+  }
+  bust();
+  return { ok: true as const };
+}
+
+// Wipe every family, chore, event, meal plan, reward, and setting, then drop
+// back into the first-run setup workflow. Gated on a parent PIN.
+export async function factoryResetAction(admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  factoryReset();
+  resetWeatherCache();
+  bust();
+  return { ok: true as const };
+}
+
+export async function updateMemberAction(id: number, patch: { name?: string; nickname?: string | null; color?: MemberColor; emoji?: string | null; role?: MemberRole }, admin?: AdminAuth) {
   const gate = await requireParentAuth(admin);
   if (!gate.ok) return gate;
   updateMember(id, patch);
+  bust();
+  return { ok: true as const };
+}
+
+// Upload/replace a member's headshot. `dataUrl` is a base64 data URL produced
+// client-side (already resized). Admin-gated, with the same bootstrap
+// exception as member creation so photos can be set on a brand-new family.
+export async function setMemberPhotoAction(id: number, dataUrl: string, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  const hasPinnedParent = ((await import("@/lib/db")).db()
+    .prepare("SELECT COUNT(*) as n FROM members WHERE role = 'parent' AND pin_hash IS NOT NULL")
+    .get() as { n: number }).n > 0;
+  if (hasPinnedParent && !gate.ok) return gate;
+
+  const m = /^data:([^;,]+)(;base64)?,([\s\S]*)$/.exec(dataUrl);
+  if (!m) return { ok: false as const, reason: "bad_image" as const };
+  const mime = m[1];
+  if (!mime.startsWith("image/")) return { ok: false as const, reason: "bad_image" as const };
+  const data = Buffer.from(m[3], m[2] ? "base64" : "utf8");
+  // Guard against runaway payloads (~1.5MB of raw bytes is plenty for a
+  // client-resized headshot).
+  if (data.length === 0 || data.length > 1_500_000) return { ok: false as const, reason: "bad_image" as const };
+  setMemberPhoto(id, mime, data);
+  bust();
+  return { ok: true as const };
+}
+
+export async function clearMemberPhotoAction(id: number, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  clearMemberPhoto(id);
   bust();
   return { ok: true as const };
 }

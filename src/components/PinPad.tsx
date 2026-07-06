@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef, createContext, useContext } from "react";
 import type { Member, MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, displayName } from "@/lib/types";
 
 const KEYS: Array<string> = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "⌫"];
 
@@ -63,11 +63,19 @@ export function PinPadModal({
       <div className="absolute inset-0 bg-black/50 fade-in" onClick={onCancel} />
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md mx-6 overflow-hidden fade-in">
         <div className={`${color.bg} text-white px-6 py-5 flex items-center gap-4`}>
-          <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl shrink-0">
-            {member.emoji ?? member.name[0]}
-          </div>
+          {member.photo_updated_at ? (
+            <img
+              src={`/api/avatar/${member.id}?v=${member.photo_updated_at}`}
+              alt={member.name}
+              className="w-14 h-14 rounded-full object-cover bg-white/20 shrink-0"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-2xl shrink-0">
+              {member.emoji ?? member.name[0]}
+            </div>
+          )}
           <div className="flex-1">
-            <div className="text-xl font-semibold">{member.name}'s PIN</div>
+            <div className="text-xl font-semibold">{displayName(member)}&apos;s PIN</div>
             <div className="text-sm opacity-90">{purpose}</div>
           </div>
           <button

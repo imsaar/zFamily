@@ -51,7 +51,7 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 | `/month` | Full month grid |
 | `/chores` | Per-member chore board with pending verifications and rewards shelf |
 | `/meals` | Weekly meal plan + shopping list panel + meal library + vote-for-next-week |
-| `/settings` | Family (roles + PINs), chores, rewards, weather, display (quiet hours, Hijri offset, idle), Google |
+| `/settings` | Family (names, nicknames, headshots, roles + PINs), chores, rewards, weather, display (quiet hours, Hijri offset, idle), Google, advanced (factory reset) |
 | `/me/[memberId]` | Personal view — that member's chores, schedule, meal votes, rewards |
 | `/m` | Mobile home (chore progress + today's events + shopping + vote tile) |
 | `/m/chores/[memberId]` | Per-member mobile chore check-off (with verify pills) |
@@ -83,7 +83,9 @@ npm run dev
 # → http://localhost:3000
 ```
 
-On first boot the app seeds a demo family (Mom/Dad/Aisha/Zayn) and 8 sample chores + 8 meals. Change everything in Settings.
+On first boot the app has no family yet — it opens a **family setup workflow** on the wall display that walks you through adding each member (parents and children) and picking your location for weather. After that, each parent is prompted to choose a PIN. A starter meal library and reward menu are seeded so you have something to work with; change everything in Settings.
+
+To start over, use **Settings → ⚠️ Advanced → Factory reset**, which erases all data and returns to the first-run setup workflow.
 
 ## Production install (Linux kiosk)
 
@@ -230,6 +232,8 @@ Personal-scope OAuth apps in Google Cloud stay in "testing" mode indefinitely un
 | Hijri offset (moon-sighting) | Display | 0 | Shift Islamic (Umm al-Qura) date by ±3 days |
 | Member PIN | Family | not set | 4-digit numeric — required for personal + admin actions |
 | Member role | Family | parent | Parent or child; determines verify rules and access to admin |
+| Member nickname | Family | none | Optional friendly name shown around the app in place of the given name |
+| Member headshot | Family | none | Optional photo (cropped/resized on-device, stored in SQLite); falls back to emoji, then initial |
 
 ## Authentication (PINs)
 
@@ -336,7 +340,7 @@ Current coverage (17 tests):
 - **Chore verify** — pending completion → verify pill → PIN pad → DB has `verified_at` and `verified_by`.
 - **Home meal panel** — three-slot layout, meals appear when planned, "Not planned" when empty.
 
-Global setup pre-seeds Mom (PIN `1111`) and Dad (PIN `2222`), so tests skip the first-launch PIN gate.
+Global setup provisions a fixed test family (Mom/Dad/Aisha/Zayn) with known PINs — Mom `1111`, Dad `2222` — so tests skip the first-run setup and PIN gates. (The app itself no longer seeds a demo family; the e2e harness seeds its own fixture in `tests/e2e/helpers.ts`.)
 
 ## Project layout
 
@@ -414,8 +418,10 @@ All endpoints:
 ```bash
 rm -rf .data/
 npm run dev
-# will reseed with the demo family
+# starts empty → the wall display opens the first-run family setup workflow
 ```
+
+You can also reset from inside the app: **Settings → ⚠️ Advanced → Factory reset** wipes all data and returns to the setup workflow (no shell access needed).
 
 **Point the app at a different data dir:**
 ```bash

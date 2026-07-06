@@ -20,13 +20,18 @@ import {
   setMemberPinAction,
   clearMemberPinAction,
   searchCityAction,
+  factoryResetAction,
+  setMemberPhotoAction,
+  clearMemberPhotoAction,
 } from "@/app/actions";
 import type { GeocodeResult } from "@/lib/geocode";
 import { Sheet } from "./Sheet";
 import { useAdminAuth } from "./AdminGate";
 import { PinPadModal } from "./PinPad";
+import { MemberAvatar } from "./MemberAvatar";
+import { readImageAsResizedDataUrl } from "@/lib/image";
 
-type Tab = "members" | "chores" | "rewards" | "weather" | "display" | "google";
+type Tab = "members" | "chores" | "rewards" | "weather" | "display" | "google" | "advanced";
 
 export function SettingsPanel({
   members,
@@ -51,6 +56,7 @@ export function SettingsPanel({
           ["weather", "🌤️ Weather"],
           ["display", "🌙 Display"],
           ["google", "🔗 Google"],
+          ["advanced", "⚠️ Advanced"],
         ] as Array<[Tab, string]>).map(([key, label]) => (
           <button
             key={key}
@@ -70,6 +76,7 @@ export function SettingsPanel({
         {tab === "weather" && <WeatherTab settings={settings} />}
         {tab === "display" && <DisplayTab settings={settings} />}
         {tab === "google" && <GoogleTab members={members} />}
+        {tab === "advanced" && <AdvancedTab />}
       </div>
     </div>
   );
@@ -97,17 +104,17 @@ function MembersTab({ members }: { members: Member[] }) {
           const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
           return (
             <div key={m.id} className="bg-white rounded-2xl border border-zinc-200 p-5 flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-full ${color.bg} flex items-center justify-center text-2xl text-white`}>
-                {m.emoji ?? m.name[0]}
-              </div>
-              <div className="flex-1">
+              <MemberAvatar member={m} className="w-14 h-14 rounded-full shrink-0" textClass="text-2xl" />
+              <div className="flex-1 min-w-0">
                 <div className="text-lg font-semibold flex items-center gap-2">
                   {m.name}
                   <span className={`text-xs px-2 py-0.5 rounded-full ${m.role === "parent" ? "bg-zinc-100 text-zinc-700" : "bg-emerald-100 text-emerald-700"}`}>
                     {m.role === "parent" ? "Parent" : "Child"}
                   </span>
                 </div>
-                <div className={`text-sm ${color.text}`}>{m.color}</div>
+                {m.nickname?.trim() && (
+                  <div className={`text-sm ${color.text} truncate`}>“{m.nickname}”</div>
+                )}
               </div>
               <button
                 onClick={() => setEditing(m)}
@@ -154,6 +161,7 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
   const [pinPad, setPinPad] = useState<null | "set" | "clear">(null);
   const [pinError, setPinError] = useState<string | null>(null);
   const [name, setName] = useState(member?.name ?? "");
+  const [nickname, setNickname] = useState(member?.nickname ?? "");
   const [color, setColor] = useState<MemberColor>((member?.color as MemberColor) ?? "sky");
   const [emoji, setEmoji] = useState(member?.emoji ?? "");
   const [role, setRole] = useState<MemberRole>(member?.role ?? "parent");
@@ -162,9 +170,10 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
     if (!name.trim()) return;
     setPending(true);
     try {
+      const data = { name: name.trim(), nickname: nickname.trim() || null, color, emoji: emoji || null, role };
       const ok = await authenticate((auth) => {
-        if (member) return updateMemberAction(member.id, { name, color, emoji: emoji || null, role }, auth);
-        return createMemberAction({ name, color, emoji: emoji || null, role }, auth);
+        if (member) return updateMemberAction(member.id, data, auth);
+        return createMemberAction(data, auth);
       });
       if (ok) {
         router.refresh();
@@ -188,6 +197,16 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
           />
         </div>
         <div>
+          <label className="text-sm font-medium text-zinc-500">Nickname (optional)</label>
+          <input
+            value={nickname ?? ""}
+            onChange={(e) => setNickname(e.target.value)}
+            placeholder="What the family calls them"
+            className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl"
+          />
+          <p className="text-xs text-zinc-500 mt-1">Shown around the app in place of their name when set.</p>
+        </div>
+        <div>
           <label className="text-sm font-medium text-zinc-500">Avatar emoji (optional)</label>
           <input
             value={emoji ?? ""}
@@ -196,7 +215,11 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
             maxLength={4}
             className="mt-1 w-24 px-4 py-3 text-center text-2xl border border-zinc-300 rounded-xl"
           />
+          <p className="text-xs text-zinc-500 mt-1">
+            {member ? "Used when no headshot photo is set." : "You can upload a headshot photo after saving."}
+          </p>
         </div>
+        {member && <PhotoUploader member={member} />}
         <div>
           <label className="text-sm font-medium text-zinc-500">Role</label>
           <div className="mt-2 flex gap-2">
@@ -294,6 +317,71 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
       )}
       {modal}
     </Sheet>
+  );
+}
+
+function PhotoUploader({ member }: { member: Member }) {
+  const router = useRouter();
+  const { authenticate, modal } = useAdminAuth();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onFile = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    setPending(true);
+    try {
+      const dataUrl = await readImageAsResizedDataUrl(file);
+      const ok = await authenticate((auth) => setMemberPhotoAction(member.id, dataUrl, auth));
+      if (ok) router.refresh();
+    } catch {
+      setError("Couldn’t read that image. Try a JPG or PNG.");
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const removePhoto = async () => {
+    setPending(true);
+    setError(null);
+    try {
+      const ok = await authenticate((auth) => clearMemberPhotoAction(member.id, auth));
+      if (ok) router.refresh();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="border-t border-zinc-100 pt-4">
+      <label className="text-sm font-medium text-zinc-500">Headshot photo (optional)</label>
+      <div className="mt-2 flex items-center gap-4">
+        <MemberAvatar member={member} className="w-20 h-20 rounded-full shrink-0" textClass="text-3xl" />
+        <div className="flex flex-col gap-2">
+          <label className={`px-4 py-2 rounded-xl border-2 border-zinc-300 text-sm cursor-pointer text-center ${pending ? "opacity-50 pointer-events-none" : ""}`}>
+            {member.photo_updated_at ? "Change photo" : "Upload photo"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={pending}
+              onChange={(e) => onFile(e.target.files?.[0] ?? null)}
+            />
+          </label>
+          {member.photo_updated_at && (
+            <button onClick={removePhoto} disabled={pending} className="px-4 py-2 rounded-xl text-red-600 text-sm text-left">
+              Remove photo
+            </button>
+          )}
+        </div>
+      </div>
+      {pending && <p className="text-xs text-zinc-500 mt-2">Saving…</p>}
+      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+      <p className="text-xs text-zinc-500 mt-2">
+        Photos are cropped to a square and resized on-device. Stored locally in your family database.
+      </p>
+      {modal}
+    </div>
   );
 }
 
@@ -1005,6 +1093,52 @@ function GoogleTab({ members }: { members: Member[] }) {
         <strong>Setup required:</strong> Set the env vars <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>,
         and <code>ZFAMILY_BASE_URL</code> before linking. See README for details.
       </div>
+    </div>
+  );
+}
+
+function AdvancedTab() {
+  const router = useRouter();
+  const { authenticate, modal } = useAdminAuth();
+  const [pending, setPending] = useState(false);
+
+  const reset = async () => {
+    if (!confirm("Factory reset erases ALL data — family members, chores, meal plans, rewards, PINs, and settings. This cannot be undone. Continue?")) {
+      return;
+    }
+    if (!confirm("Are you absolutely sure? The app will restart from the first-run family setup.")) {
+      return;
+    }
+    setPending(true);
+    try {
+      const ok = await authenticate((auth) => factoryResetAction(auth));
+      if (ok) router.refresh();
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl">
+      <h2 className="text-2xl font-semibold mb-2">Advanced</h2>
+      <p className="text-zinc-500 mb-8">Maintenance actions for this device.</p>
+
+      <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-6">
+        <h3 className="text-lg font-semibold text-red-900">⚠️ Factory reset</h3>
+        <p className="text-sm text-red-800 mt-2 mb-5">
+          Permanently erase everything — family members, chores and completions, calendar events,
+          meal plans and shopping lists, rewards, PINs, and settings — and start over from the
+          first-run family setup. Google account links are removed too. This cannot be undone.
+        </p>
+        <button
+          onClick={reset}
+          disabled={pending}
+          className="px-6 py-3 rounded-xl bg-red-600 text-white font-medium disabled:opacity-50"
+        >
+          {pending ? "Resetting…" : "Erase all data & reset"}
+        </button>
+      </div>
+      {modal}
     </div>
   );
 }

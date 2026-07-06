@@ -4,6 +4,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { Screensaver } from "@/components/Screensaver";
 import { PinProviders } from "@/components/PinProviders";
 import { PinSetupGate } from "@/components/PinSetupGate";
+import { FamilySetupGate } from "@/components/FamilySetupGate";
 import { listMembers } from "@/lib/members";
 import { getWeather } from "@/lib/weather";
 import { getAllSettings } from "@/lib/settings";
@@ -22,6 +23,13 @@ export const dynamic = "force-dynamic";
 
 export default async function KioskLayout({ children }: { children: React.ReactNode }) {
   const members = listMembers();
+
+  // Fresh install (or after a factory reset): no family exists yet. Show the
+  // first-run setup workflow full-screen instead of the empty kiosk chrome.
+  if (members.length === 0) {
+    return <FamilySetupGate />;
+  }
+
   const parents = listParents();
   const weather = await getWeather();
   const settings = getAllSettings();

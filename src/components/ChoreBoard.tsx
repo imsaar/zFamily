@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { Member, MemberColor, ChoreCompletion, Reward } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, displayName } from "@/lib/types";
 import type { ChoreWithAssignees } from "@/lib/chores";
 import {
   toggleChoreAction,
@@ -104,12 +104,20 @@ export function ChoreBoard({
               <div key={m.id} className="bg-white rounded-2xl shadow-sm border border-zinc-200 flex flex-col overflow-hidden">
                 <div className={`${color.bg} px-5 py-4 text-white flex items-center justify-between`}>
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl">
-                      {m.emoji ?? m.name[0]}
-                    </div>
+                    {m.photo_updated_at ? (
+                      <img
+                        src={`/api/avatar/${m.id}?v=${m.photo_updated_at}`}
+                        alt={m.name}
+                        className="w-12 h-12 rounded-full object-cover bg-white/20"
+                      />
+                    ) : (
+                      <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl">
+                        {m.emoji ?? m.name[0]}
+                      </div>
+                    )}
                     <div>
                       <div className="text-xl font-semibold flex items-center gap-2">
-                        {m.name}
+                        {displayName(m)}
                         <span className="text-[10px] uppercase tracking-wider bg-white/20 px-1.5 py-0.5 rounded">
                           {m.role}
                         </span>

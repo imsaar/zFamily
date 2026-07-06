@@ -45,6 +45,13 @@ CREATE TABLE IF NOT EXISTS members (
   created_at   INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS member_photos (
+  member_id   INTEGER PRIMARY KEY REFERENCES members(id) ON DELETE CASCADE,
+  mime        TEXT NOT NULL,
+  data        BLOB NOT NULL,
+  updated_at  INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id             TEXT PRIMARY KEY,
   member_id      INTEGER REFERENCES members(id) ON DELETE CASCADE,
@@ -171,9 +178,54 @@ function migrate(conn: Database.Database) {
   ensureColumn(conn, "chore_completions", "verified_by", "INTEGER REFERENCES members(id) ON DELETE SET NULL");
   ensureColumn(conn, "members", "pin_hash", "TEXT");
   ensureColumn(conn, "members", "pin_salt", "TEXT");
+  ensureColumn(conn, "members", "nickname", "TEXT");
+  ensureColumn(conn, "members", "photo_updated_at", "INTEGER");
   // Index needs the columns above to exist first.
   conn.exec("CREATE INDEX IF NOT EXISTS comp_pending ON chore_completions(verified_at) WHERE verified_at IS NULL");
-  seedIfEmpty(conn);
+  seedStarterContent(conn);
+}
+
+// All domain tables, ordered so that a plain DELETE sweep is easy to reason
+// about. Foreign keys are disabled during a factory reset so order doesn't
+// actually matter, but keep children before parents for clarity.
+const ALL_TABLES = [
+  "chore_completions",
+  "chore_assignees",
+  "member_photos",
+  "reward_redemptions",
+  "meal_votes",
+  "meal_proposals",
+  "meal_plan_entries",
+  "shopping_items",
+  "events",
+  "chores",
+  "rewards",
+  "meals",
+  "members",
+  "settings",
+];
+
+/** Wipe every row from every domain table and re-seed the starter meal and
+ *  reward libraries. Members/chores/settings are intentionally left empty so
+ *  the app drops back into the first-run family setup workflow. */
+export function factoryReset() {
+  const conn = db();
+  conn.pragma("foreign_keys = OFF");
+  try {
+    const wipe = conn.transaction(() => {
+      for (const t of ALL_TABLES) conn.prepare(`DELETE FROM ${t}`).run();
+      // Reset AUTOINCREMENT counters so ids start from 1 again.
+      try {
+        conn.prepare("DELETE FROM sqlite_sequence").run();
+      } catch {
+        // sqlite_sequence only exists once an AUTOINCREMENT table has data.
+      }
+    });
+    wipe();
+  } finally {
+    conn.pragma("foreign_keys = ON");
+  }
+  seedStarterContent(conn);
 }
 
 function ensureColumn(conn: Database.Database, table: string, column: string, def: string) {
@@ -182,64 +234,13 @@ function ensureColumn(conn: Database.Database, table: string, column: string, de
   conn.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${def}`);
 }
 
-function seedIfEmpty(conn: Database.Database) {
+// Seed the content libraries that every household starts with — the meal
+// ideas and reward menu. Deliberately does NOT create any family members,
+// chores, or location settings: a fresh (or factory-reset) install starts
+// with no family so the first-run setup workflow can build one.
+function seedStarterContent(conn: Database.Database) {
   seedMealsIfEmpty(conn);
   seedRewardsIfEmpty(conn);
-  const memberCount = (conn.prepare("SELECT COUNT(*) as n FROM members").get() as { n: number }).n;
-  if (memberCount > 0) return;
-
-  const now = Math.floor(Date.now() / 1000);
-  const insertMember = conn.prepare(
-    "INSERT INTO members (name, color, emoji, role, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?)"
-  );
-  const seedMembers = [
-    { name: "Mom", color: "rose", emoji: "👩", role: "parent", order: 0 },
-    { name: "Dad", color: "sky", emoji: "👨", role: "parent", order: 1 },
-    { name: "Aisha", color: "emerald", emoji: "👧", role: "child", order: 2 },
-    { name: "Zayn", color: "amber", emoji: "👦", role: "child", order: 3 },
-  ];
-  const memberIds: number[] = [];
-  for (const m of seedMembers) {
-    const r = insertMember.run(m.name, m.color, m.emoji, m.role, m.order, now);
-    memberIds.push(Number(r.lastInsertRowid));
-  }
-
-  const insertChore = conn.prepare(
-    "INSERT INTO chores (title, icon, points, recurrence, active, created_at) VALUES (?, ?, ?, ?, 1, ?)"
-  );
-  const assign = conn.prepare(
-    "INSERT INTO chore_assignees (chore_id, member_id) VALUES (?, ?)"
-  );
-  const seedChores: Array<{ title: string; icon: string; points: number; recurrence: string; assignees: number[] }> = [
-    { title: "Make bed", icon: "🛏️", points: 1, recurrence: "daily", assignees: [memberIds[2], memberIds[3]] },
-    { title: "Brush teeth (AM)", icon: "🪥", points: 1, recurrence: "daily", assignees: [memberIds[2], memberIds[3]] },
-    { title: "Brush teeth (PM)", icon: "🪥", points: 1, recurrence: "daily", assignees: [memberIds[2], memberIds[3]] },
-    { title: "Empty dishwasher", icon: "🍽️", points: 3, recurrence: "daily", assignees: [memberIds[0]] },
-    { title: "Take out trash", icon: "🗑️", points: 3, recurrence: "weekly:MON,THU", assignees: [memberIds[1]] },
-    { title: "Walk dog", icon: "🐕", points: 2, recurrence: "daily", assignees: [memberIds[1], memberIds[2]] },
-    { title: "Homework", icon: "📚", points: 5, recurrence: "weekdays", assignees: [memberIds[2], memberIds[3]] },
-    { title: "Tidy room", icon: "🧸", points: 2, recurrence: "weekly:SAT", assignees: [memberIds[2], memberIds[3]] },
-  ];
-  for (const c of seedChores) {
-    const r = insertChore.run(c.title, c.icon, c.points, c.recurrence, now);
-    const cid = Number(r.lastInsertRowid);
-    for (const mid of c.assignees) assign.run(cid, mid);
-  }
-
-  const setting = conn.prepare(
-    "INSERT INTO settings (key, value) VALUES (?, ?)"
-  );
-  setting.run("weather_lat", "37.7749");
-  setting.run("weather_lon", "-122.4194");
-  setting.run("weather_label", "San Francisco");
-  setting.run("weather_tz", "America/Los_Angeles");
-  setting.run("quiet_start", "21:00");
-  setting.run("quiet_end", "07:00");
-  setting.run("chore_reset_hour", "4");
-  setting.run("idle_seconds", "300");
-  setting.run("screensaver_mode", "clock");
-  setting.run("personal_idle_seconds", "120");
-  setting.run("hijri_offset", "0");
 }
 
 function seedRewardsIfEmpty(conn: Database.Database) {
