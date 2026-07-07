@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState, useRef, useEffect } from "react";
 import { format, isToday } from "date-fns";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
 import { COLOR_CLASSES, displayName } from "@/lib/types";
@@ -40,8 +41,38 @@ export function FamilyHome({
   hijriDate: string;
 }) {
   const memberById = new Map(members.map((m) => [m.id, m]));
+  const [showContext, setShowContext] = useState(false);
+
+  // tanzil.net deep-links via a hash route (#trans/<id>/<sura>:<aya>) — the
+  // path form returns "File not found". For a range like "1:1-3" open at the
+  // first ayah, then the reader can scroll for context.
+  const ayahStart = verse.reference.split("-")[0].trim();
+  const tanzilUrl = `https://tanzil.net/#trans/en.qarai/${ayahStart}`;
+
+  // Long verses are clamped on the card (CSS ellipsis); detect when either
+  // the Arabic or the translation actually overflows so we can offer a
+  // "read the full ayah" link into the tanzil modal.
+  const arabicRef = useRef<HTMLDivElement>(null);
+  const transRef = useRef<HTMLDivElement>(null);
+  const [truncated, setTruncated] = useState(false);
+  useEffect(() => {
+    const clipped = (el: HTMLElement | null) => !!el && el.scrollHeight - el.clientHeight > 2;
+    const check = () => setTruncated(clipped(arabicRef.current) || clipped(transRef.current));
+    check();
+    const ro = new ResizeObserver(check);
+    if (arabicRef.current) ro.observe(arabicRef.current);
+    if (transRef.current) ro.observe(transRef.current);
+    window.addEventListener("resize", check);
+    // Arabic webfonts load async and change the wrapped height — recheck.
+    if (typeof document !== "undefined" && "fonts" in document) document.fonts.ready.then(check);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", check);
+    };
+  }, [verse.arabic, verse.translation]);
 
   return (
+    <>
     <div className="h-full flex bg-zinc-50">
       {/* Left column: verse of the day + week overview */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
@@ -54,18 +85,32 @@ export function FamilyHome({
             <div className="text-sm uppercase tracking-widest text-emerald-700 font-semibold">
               ✨ Verse of the day
             </div>
-            <div className="text-xs text-emerald-700/70 tabular-nums">{verse.surah} · {verse.reference}</div>
+            <button
+              onClick={() => setShowContext(true)}
+              className="text-xs text-emerald-700/80 tabular-nums underline decoration-dotted underline-offset-2 hover:text-emerald-900 active:text-emerald-900"
+            >
+              {verse.surah} · {verse.reference} 📖
+            </button>
           </div>
           <div
-            className="mt-4 text-right font-serif leading-loose text-emerald-950"
+            ref={arabicRef}
+            className="mt-4 text-right font-serif leading-loose text-emerald-950 line-clamp-4"
             style={{ fontSize: "2.2rem", fontFamily: "'Amiri', 'Scheherazade New', 'Noto Naskh Arabic', serif" }}
             dir="rtl"
           >
             {verse.arabic}
           </div>
-          <div className="mt-4 text-lg text-emerald-950/90 leading-relaxed italic">
+          <div ref={transRef} className="mt-4 text-lg text-emerald-950/90 leading-relaxed italic line-clamp-3">
             &ldquo;{verse.translation}&rdquo;
           </div>
+          {truncated && (
+            <button
+              onClick={() => setShowContext(true)}
+              className="mt-2 text-sm font-medium text-emerald-700 hover:text-emerald-900 active:text-emerald-900"
+            >
+              … Read the full ayah 📖
+            </button>
+          )}
         </section>
 
         <section className="mx-6 mt-6">
@@ -236,5 +281,34 @@ export function FamilyHome({
         </div>
       </div>
     </div>
+
+    {showContext && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center">
+        <div className="absolute inset-0 bg-black/50 fade-in" onClick={() => setShowContext(false)} />
+        <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-5xl mx-6 h-[85vh] flex flex-col overflow-hidden fade-in">
+          <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between shrink-0">
+            <div>
+              <div className="text-xs uppercase tracking-widest text-emerald-700 font-semibold">
+                Ali Quli Qarai translation
+              </div>
+              <div className="text-lg font-semibold">{verse.surah} · {verse.reference}</div>
+            </div>
+            <button
+              onClick={() => setShowContext(false)}
+              aria-label="Close"
+              className="w-11 h-11 rounded-full text-3xl text-zinc-500 hover:bg-zinc-100 flex items-center justify-center"
+            >
+              ×
+            </button>
+          </div>
+          <iframe
+            src={tanzilUrl}
+            title={`Quran ${verse.reference} — Ali Quli Qarai translation on tanzil.net`}
+            className="flex-1 w-full border-0"
+          />
+        </div>
+      </div>
+    )}
+    </>
   );
 }

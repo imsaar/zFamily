@@ -6,6 +6,7 @@ import { PinProviders } from "@/components/PinProviders";
 import { PinSetupGate } from "@/components/PinSetupGate";
 import { FamilySetupGate } from "@/components/FamilySetupGate";
 import { IcalAutoSync } from "@/components/IcalAutoSync";
+import { OnScreenKeyboard } from "@/components/OnScreenKeyboard";
 import { listMembers } from "@/lib/members";
 import { getWeather } from "@/lib/weather";
 import { getAllSettings } from "@/lib/settings";
@@ -47,6 +48,7 @@ export default async function KioskLayout({ children }: { children: React.ReactN
       <main className="flex-1 overflow-hidden">{children}</main>
       <BottomNav />
       <IcalAutoSync />
+      {settings.onscreen_keyboard === "true" && <OnScreenKeyboard />}
       {parents.length > 0 && parentsNeedingPin.length > 0 && (
         <PinSetupGate parentsNeedingPin={parentsNeedingPin} />
       )}

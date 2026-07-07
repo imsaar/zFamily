@@ -1,7 +1,20 @@
 import { db } from "./db";
 import { addDays, startOfWeek, format } from "date-fns";
 
-export type Ingredient = { name: string; quantity?: string };
+export type Ingredient = { name: string; quantity?: string; unit?: string };
+
+/** Human label for an ingredient's amount, combining quantity + unit
+ *  (e.g. "2 lb", "1 cup", "3"). Returns null when neither is set. */
+export function ingredientAmount(ing: Ingredient): string | null {
+  const qty = ing.quantity?.trim();
+  const unit = ing.unit?.trim();
+  const label = [qty, unit].filter(Boolean).join(" ").trim();
+  return label || null;
+}
+
+export type MealSlot = "breakfast" | "lunch" | "dinner";
+
+export const ALL_SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner"];
 
 export type Meal = {
   id: number;
@@ -9,11 +22,10 @@ export type Meal = {
   icon: string | null;
   notes: string | null;
   ingredients: Ingredient[];
+  slots: MealSlot[]; // which meal times this is eligible for
   is_favorite: number;
   created_at: number;
 };
-
-export type MealSlot = "breakfast" | "lunch" | "dinner";
 
 export type PlanEntry = {
   id: number;
@@ -31,10 +43,21 @@ export type ShoppingItem = {
   created_at: number;
 };
 
-type MealRow = Omit<Meal, "ingredients"> & { ingredients: string };
+type MealRow = Omit<Meal, "ingredients" | "slots"> & { ingredients: string; slots: string | null };
+
+function parseSlots(csv: string | null): MealSlot[] {
+  // NULL/empty (legacy rows) means eligible for every slot.
+  const parsed = (csv ?? "").split(",").map((s) => s.trim()).filter((s): s is MealSlot => (ALL_SLOTS as string[]).includes(s));
+  return parsed.length ? parsed : [...ALL_SLOTS];
+}
 
 function rowToMeal(row: MealRow): Meal {
-  return { ...row, ingredients: JSON.parse(row.ingredients), is_favorite: row.is_favorite ?? 0 };
+  return {
+    ...row,
+    ingredients: JSON.parse(row.ingredients),
+    slots: parseSlots(row.slots),
+    is_favorite: row.is_favorite ?? 0,
+  };
 }
 
 export function toggleFavorite(id: number) {
@@ -183,19 +206,24 @@ export function getMeal(id: number): Meal | undefined {
   return row ? rowToMeal(row) : undefined;
 }
 
-export function createMeal(input: { name: string; icon?: string | null; notes?: string | null; ingredients: Ingredient[] }): number {
+function slotsToCsv(slots?: MealSlot[]): string {
+  const valid = (slots ?? []).filter((s) => ALL_SLOTS.includes(s));
+  return (valid.length ? valid : ALL_SLOTS).join(",");
+}
+
+export function createMeal(input: { name: string; icon?: string | null; notes?: string | null; ingredients: Ingredient[]; slots?: MealSlot[] }): number {
   const now = Math.floor(Date.now() / 1000);
   const r = db()
     .prepare(
-      "INSERT INTO meals (name, icon, notes, ingredients, created_at) VALUES (?, ?, ?, ?, ?)"
+      "INSERT INTO meals (name, icon, notes, ingredients, slots, created_at) VALUES (?, ?, ?, ?, ?, ?)"
     )
-    .run(input.name, input.icon ?? null, input.notes ?? null, JSON.stringify(input.ingredients), now);
+    .run(input.name, input.icon ?? null, input.notes ?? null, JSON.stringify(input.ingredients), slotsToCsv(input.slots), now);
   return Number(r.lastInsertRowid);
 }
 
 export function updateMeal(
   id: number,
-  patch: { name?: string; icon?: string | null; notes?: string | null; ingredients?: Ingredient[] }
+  patch: { name?: string; icon?: string | null; notes?: string | null; ingredients?: Ingredient[]; slots?: MealSlot[] }
 ) {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -203,6 +231,7 @@ export function updateMeal(
   if (patch.icon !== undefined) { fields.push("icon = ?"); values.push(patch.icon); }
   if (patch.notes !== undefined) { fields.push("notes = ?"); values.push(patch.notes); }
   if (patch.ingredients !== undefined) { fields.push("ingredients = ?"); values.push(JSON.stringify(patch.ingredients)); }
+  if (patch.slots !== undefined) { fields.push("slots = ?"); values.push(slotsToCsv(patch.slots)); }
   if (fields.length === 0) return;
   values.push(id);
   db().prepare(`UPDATE meals SET ${fields.join(", ")} WHERE id = ?`).run(...values);
@@ -261,13 +290,18 @@ export function clearCheckedShopping() {
   db().prepare("DELETE FROM shopping_items WHERE checked = 1").run();
 }
 
-export function addMealIngredientsToShopping(mealId: number): number {
+/** Adds a meal's ingredients to the shopping list. When `indexes` is given,
+ *  only those ingredient positions are added (lets the user pick which ones);
+ *  omit it to add all. */
+export function addMealIngredientsToShopping(mealId: number, indexes?: number[]): number {
   const meal = getMeal(mealId);
   if (!meal) return 0;
+  const wanted = indexes ? new Set(indexes) : null;
   let n = 0;
-  for (const ing of meal.ingredients) {
-    addShoppingItem({ name: ing.name, quantity: ing.quantity ?? null, from_meal_id: mealId });
+  meal.ingredients.forEach((ing, i) => {
+    if (wanted && !wanted.has(i)) return;
+    addShoppingItem({ name: ing.name, quantity: ingredientAmount(ing), from_meal_id: mealId });
     n++;
-  }
+  });
   return n;
 }

@@ -283,7 +283,7 @@ export async function updateSettingAction(key: string, value: string, admin?: Ad
   return { ok: true as const };
 }
 
-export async function createMealAction(input: { name: string; icon?: string | null; notes?: string | null; ingredients: Ingredient[] }, admin?: AdminAuth) {
+export async function createMealAction(input: { name: string; icon?: string | null; notes?: string | null; ingredients: Ingredient[]; slots?: MealSlot[] }, admin?: AdminAuth) {
   const gate = await requireParentAuth(admin);
   if (!gate.ok) return gate;
   createMeal(input);
@@ -291,7 +291,7 @@ export async function createMealAction(input: { name: string; icon?: string | nu
   return { ok: true as const };
 }
 
-export async function updateMealAction(id: number, patch: { name?: string; icon?: string | null; notes?: string | null; ingredients?: Ingredient[] }, admin?: AdminAuth) {
+export async function updateMealAction(id: number, patch: { name?: string; icon?: string | null; notes?: string | null; ingredients?: Ingredient[]; slots?: MealSlot[] }, admin?: AdminAuth) {
   const gate = await requireParentAuth(admin);
   if (!gate.ok) return gate;
   updateMeal(id, patch);
@@ -312,9 +312,14 @@ export async function setPlanSlotAction(date: string, slot: MealSlot, mealId: nu
   bust();
 }
 
-export async function planAndShopAction(date: string, slot: MealSlot, mealId: number) {
+export async function planAndShopAction(
+  date: string,
+  slot: MealSlot,
+  mealId: number,
+  ingredientIdxs?: number[]
+) {
   setPlanSlot(date, slot, mealId);
-  const n = addMealIngredientsToShopping(mealId);
+  const n = addMealIngredientsToShopping(mealId, ingredientIdxs);
   bust();
   return { added: n };
 }
