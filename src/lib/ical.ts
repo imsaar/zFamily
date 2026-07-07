@@ -97,23 +97,28 @@ function feedCalendarId(feedId: number): string {
 }
 
 /** Convert a node-ical instance start/end into stored unix timestamps.
- *  All-day events are pinned to UTC midnight of their calendar date so they
- *  bucket onto the right day regardless of server timezone. */
+ *  All-day events are pinned to *local* midnight of their calendar date — the
+ *  rest of the app formats timestamps in the server's local timezone (e.g.
+ *  `format(new Date(ts*1000), 'yyyy-MM-dd')`), so a local-midnight timestamp is
+ *  what makes an all-day event land on the correct day everywhere (home
+ *  "today" list, week/month grouping). UTC midnight would shift it a day in any
+ *  timezone behind UTC. */
 function toStored(start: Date, end: Date, fullDay: boolean): { start_ts: number; end_ts: number; all_day: number } {
   if (fullDay) {
-    const s = utcMidnightOf(start);
+    const { y, m, d } = calendarDate(start);
+    const s = Math.floor(new Date(y, m, d, 0, 0, 0, 0).getTime() / 1000); // local midnight
     const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000));
-    return { start_ts: Math.floor(s / 1000), end_ts: Math.floor(s / 1000) + days * 86_400, all_day: 1 };
+    return { start_ts: s, end_ts: s + days * 86_400, all_day: 1 };
   }
   return { start_ts: Math.floor(start.getTime() / 1000), end_ts: Math.floor(end.getTime() / 1000), all_day: 0 };
 }
 
-// node-ical returns all-day dates as local-midnight Date objects. Shift by 12h
-// before reading UTC parts so the calendar date is unaffected by the offset,
-// then rebuild as true UTC midnight.
-function utcMidnightOf(d: Date): number {
+// node-ical returns an all-day DATE as a midnight Date object (in some offset).
+// Shift by 12h before reading UTC parts so the intended calendar date is
+// recovered regardless of that offset (|offset| < 12h always).
+function calendarDate(d: Date): { y: number; m: number; d: number } {
   const noonish = new Date(d.getTime() + 12 * 3600 * 1000);
-  return Date.UTC(noonish.getUTCFullYear(), noonish.getUTCMonth(), noonish.getUTCDate());
+  return { y: noonish.getUTCFullYear(), m: noonish.getUTCMonth(), d: noonish.getUTCDate() };
 }
 
 /** Fetch and re-materialize one feed. Replaces all of the feed's events. */
