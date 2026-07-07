@@ -52,6 +52,20 @@ CREATE TABLE IF NOT EXISTS member_photos (
   updated_at  INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ical_feeds (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  name             TEXT NOT NULL,
+  url              TEXT NOT NULL,
+  member_id        INTEGER REFERENCES members(id) ON DELETE SET NULL,
+  color            TEXT,
+  interval_hours   INTEGER NOT NULL DEFAULT 6,
+  active           INTEGER NOT NULL DEFAULT 1,
+  last_synced_at   INTEGER,
+  last_status      TEXT,
+  last_event_count INTEGER,
+  created_at       INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS events (
   id             TEXT PRIMARY KEY,
   member_id      INTEGER REFERENCES members(id) ON DELETE CASCADE,
@@ -198,6 +212,7 @@ const ALL_TABLES = [
   "meal_plan_entries",
   "shopping_items",
   "events",
+  "ical_feeds",
   "chores",
   "rewards",
   "meals",
