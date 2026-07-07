@@ -5,6 +5,7 @@ import { Screensaver } from "@/components/Screensaver";
 import { PinProviders } from "@/components/PinProviders";
 import { PinSetupGate } from "@/components/PinSetupGate";
 import { FamilySetupGate } from "@/components/FamilySetupGate";
+import { IcalAutoSync } from "@/components/IcalAutoSync";
 import { listMembers } from "@/lib/members";
 import { getWeather } from "@/lib/weather";
 import { getAllSettings } from "@/lib/settings";
@@ -45,6 +46,7 @@ export default async function KioskLayout({ children }: { children: React.ReactN
       <Header members={members} weather={weather} />
       <main className="flex-1 overflow-hidden">{children}</main>
       <BottomNav />
+      <IcalAutoSync />
       {parents.length > 0 && parentsNeedingPin.length > 0 && (
         <PinSetupGate parentsNeedingPin={parentsNeedingPin} />
       )}

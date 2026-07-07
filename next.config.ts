@@ -1,7 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["better-sqlite3"],
+  // node-ical (and its rrule/moment deps) don't survive server bundling — keep
+  // them external so they're required at runtime.
+  serverExternalPackages: ["better-sqlite3", "node-ical"],
 };
 
 export default nextConfig;

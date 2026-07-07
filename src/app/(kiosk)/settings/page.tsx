@@ -3,6 +3,7 @@ import { listMembers } from "@/lib/members";
 import { listChores } from "@/lib/chores";
 import { listRewards } from "@/lib/rewards";
 import { getAllSettings } from "@/lib/settings";
+import { listFeeds } from "@/lib/ical";
 
 export const dynamic = "force-dynamic";
 
@@ -11,5 +12,6 @@ export default function SettingsPage() {
   const chores = listChores();
   const rewards = listRewards(false);
   const settings = getAllSettings();
-  return <SettingsPanel members={members} chores={chores} rewards={rewards} settings={settings} />;
+  const feeds = listFeeds();
+  return <SettingsPanel members={members} chores={chores} rewards={rewards} settings={settings} feeds={feeds} />;
 }

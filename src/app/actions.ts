@@ -5,6 +5,7 @@ import { createLocalEvent, deleteEvent, upsertEvent, getEvent } from "@/lib/even
 import { toggleCompletion, createChore, updateChore, deleteChore, verifyCompletion, unverifyCompletion } from "@/lib/chores";
 import { createMember, updateMember, deleteMember, setMemberPhoto, clearMemberPhoto } from "@/lib/members";
 import { factoryReset } from "@/lib/db";
+import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting } from "@/lib/settings";
 import { requirePin, setMemberPin, clearMemberPin, memberHasPin, verifyMemberPin } from "@/lib/pins";
@@ -137,6 +138,46 @@ export async function completeFamilySetupAction(input: {
   }
   bust();
   return { ok: true as const };
+}
+
+// iCal subscription feeds (Google Calendar "secret address in iCal format",
+// Apple, Outlook, etc.). Config CRUD is parent-gated; refreshing is not, so the
+// always-on kiosk poller and cron can trigger it freely.
+
+export async function createIcalFeedAction(input: { name: string; url: string; member_id?: number | null; color?: string | null; interval_hours?: number }, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  if (!input.name.trim() || !input.url.trim()) return { ok: false as const, reason: "missing_fields" as const };
+  const id = createFeed(input);
+  // Pull it in immediately so the calendar populates without waiting for the interval.
+  await syncDueFeeds({ force: true, feedId: id });
+  bust();
+  return { ok: true as const, id };
+}
+
+export async function updateIcalFeedAction(id: number, patch: { name?: string; url?: string; member_id?: number | null; color?: string | null; interval_hours?: number; active?: number }, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  updateFeed(id, patch);
+  await syncDueFeeds({ force: true, feedId: id });
+  bust();
+  return { ok: true as const };
+}
+
+export async function deleteIcalFeedAction(id: number, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  deleteFeed(id);
+  bust();
+  return { ok: true as const };
+}
+
+/** Refresh feeds. `force` re-pulls every active feed now; otherwise only the
+ *  ones whose interval has elapsed. Not gated — used by the kiosk poller. */
+export async function syncIcalFeedsAction(opts?: { force?: boolean; feedId?: number }) {
+  const r = await syncDueFeeds(opts);
+  bust();
+  return { ok: true as const, ...r };
 }
 
 // Wipe every family, chore, event, meal plan, reward, and setting, then drop

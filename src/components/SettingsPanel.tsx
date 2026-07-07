@@ -23,26 +23,33 @@ import {
   factoryResetAction,
   setMemberPhotoAction,
   clearMemberPhotoAction,
+  createIcalFeedAction,
+  updateIcalFeedAction,
+  deleteIcalFeedAction,
+  syncIcalFeedsAction,
 } from "@/app/actions";
 import type { GeocodeResult } from "@/lib/geocode";
+import type { IcalFeed } from "@/lib/ical";
 import { Sheet } from "./Sheet";
 import { useAdminAuth } from "./AdminGate";
 import { PinPadModal } from "./PinPad";
 import { MemberAvatar } from "./MemberAvatar";
 import { readImageAsResizedDataUrl } from "@/lib/image";
 
-type Tab = "members" | "chores" | "rewards" | "weather" | "display" | "google" | "advanced";
+type Tab = "members" | "chores" | "rewards" | "calendars" | "weather" | "display" | "google" | "advanced";
 
 export function SettingsPanel({
   members,
   chores,
   rewards,
   settings,
+  feeds,
 }: {
   members: Member[];
   chores: ChoreWithAssignees[];
   rewards: Reward[];
   settings: Record<string, string>;
+  feeds: IcalFeed[];
 }) {
   const [tab, setTab] = useState<Tab>("members");
 
@@ -53,6 +60,7 @@ export function SettingsPanel({
           ["members", "👥 Family"],
           ["chores", "✅ Chores"],
           ["rewards", "🏆 Rewards"],
+          ["calendars", "📆 Calendars"],
           ["weather", "🌤️ Weather"],
           ["display", "🌙 Display"],
           ["google", "🔗 Google"],
@@ -73,6 +81,7 @@ export function SettingsPanel({
         {tab === "members" && <MembersTab members={members} />}
         {tab === "chores" && <ChoresTab chores={chores} members={members} />}
         {tab === "rewards" && <RewardsTab rewards={rewards} />}
+        {tab === "calendars" && <CalendarsTab feeds={feeds} members={members} />}
         {tab === "weather" && <WeatherTab settings={settings} />}
         {tab === "display" && <DisplayTab settings={settings} />}
         {tab === "google" && <GoogleTab members={members} />}
@@ -1095,6 +1104,205 @@ function GoogleTab({ members }: { members: Member[] }) {
       </div>
     </div>
   );
+}
+
+function CalendarsTab({ feeds, members }: { feeds: IcalFeed[]; members: Member[] }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [editing, setEditing] = useState<IcalFeed | "new" | null>(null);
+  const { authenticate, modal } = useAdminAuth();
+
+  const syncAll = async () => {
+    setSyncing(true);
+    try {
+      await syncIcalFeedsAction({ force: true });
+      router.refresh();
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-2xl font-semibold">Calendar subscriptions</h2>
+        <div className="flex gap-2">
+          {feeds.length > 0 && (
+            <button onClick={syncAll} disabled={syncing} className="px-4 py-3 rounded-xl border border-zinc-300 disabled:opacity-50">
+              {syncing ? "Syncing…" : "🔄 Sync all"}
+            </button>
+          )}
+          <button onClick={() => setEditing("new")} className="px-5 py-3 rounded-xl bg-zinc-900 text-white font-medium">
+            + Add calendar
+          </button>
+        </div>
+      </div>
+      <p className="text-sm text-zinc-500 mb-6">
+        Subscribe to a read-only calendar by its iCal URL. In Google Calendar, open a calendar’s
+        <strong> Settings → Integrate calendar → Secret address in iCal format</strong> and paste that link here.
+        Events refresh automatically on each calendar’s interval and show up across the app.
+      </p>
+
+      <div className="space-y-3">
+        {feeds.length === 0 && (
+          <div className="text-center text-zinc-400 italic py-8 border-2 border-dashed border-zinc-200 rounded-2xl">
+            No calendar subscriptions yet.
+          </div>
+        )}
+        {feeds.map((f) => {
+          const m = f.member_id ? members.find((x) => x.id === f.member_id) : null;
+          const color = m ? COLOR_CLASSES[m.color as MemberColor] : null;
+          const err = f.last_status?.startsWith("error");
+          return (
+            <div key={f.id} className="bg-white rounded-xl border border-zinc-200 p-4 flex items-center gap-4">
+              <div className="text-2xl w-10 text-center">📆</div>
+              <div className="flex-1 min-w-0">
+                <div className="text-lg font-medium flex items-center gap-2">
+                  {f.name}
+                  {m && color && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${color.bgSoft} ${color.text}`}>{m.name}</span>
+                  )}
+                  {!f.active && <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500">Paused</span>}
+                </div>
+                <div className="text-sm text-zinc-500 truncate">{maskUrl(f.url)}</div>
+                <div className={`text-xs mt-0.5 ${err ? "text-red-600" : "text-zinc-400"}`}>
+                  every {f.interval_hours}h · {syncStatus(f)}
+                </div>
+              </div>
+              <button onClick={() => setEditing(f)} className="px-4 py-2 rounded-lg border border-zinc-300">Edit</button>
+              <button
+                onClick={async () => {
+                  if (!confirm(`Remove the "${f.name}" subscription and its events?`)) return;
+                  setPending(true);
+                  try {
+                    const ok = await authenticate((auth) => deleteIcalFeedAction(f.id, auth));
+                    if (ok) router.refresh();
+                  } finally {
+                    setPending(false);
+                  }
+                }}
+                disabled={pending}
+                className="px-3 py-2 rounded-lg text-red-600"
+              >
+                🗑️
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      {editing && (
+        <FeedEditor feed={editing === "new" ? null : editing} members={members} onClose={() => setEditing(null)} />
+      )}
+      {modal}
+    </div>
+  );
+}
+
+function FeedEditor({ feed, members, onClose }: { feed: IcalFeed | null; members: Member[]; onClose: () => void }) {
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { authenticate, modal } = useAdminAuth();
+  const [name, setName] = useState(feed?.name ?? "");
+  const [url, setUrl] = useState(feed?.url ?? "");
+  const [memberId, setMemberId] = useState<number | null>(feed?.member_id ?? null);
+  const [interval, setIntervalHours] = useState(String(feed?.interval_hours ?? 6));
+  const [active, setActive] = useState(feed ? feed.active === 1 : true);
+
+  const save = async () => {
+    if (!name.trim() || !url.trim()) {
+      setError("Name and iCal URL are required.");
+      return;
+    }
+    const hours = Math.max(1, Math.min(168, Math.round(Number(interval) || 6)));
+    setPending(true);
+    setError(null);
+    try {
+      const ok = await authenticate((auth) => {
+        if (feed) return updateIcalFeedAction(feed.id, { name, url, member_id: memberId, interval_hours: hours, active: active ? 1 : 0 }, auth);
+        return createIcalFeedAction({ name, url, member_id: memberId, interval_hours: hours }, auth);
+      });
+      if (ok) {
+        router.refresh();
+        onClose();
+      }
+    } finally {
+      setPending(false);
+    }
+  };
+
+  return (
+    <Sheet open onClose={onClose} title={feed ? "Edit calendar" : "Add calendar"} width="max-w-xl">
+      <div className="space-y-5">
+        <div>
+          <label className="text-sm font-medium text-zinc-500">Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. School calendar" className="mt-1 w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl" />
+        </div>
+        <div>
+          <label className="text-sm font-medium text-zinc-500">Secret iCal address (URL)</label>
+          <input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://calendar.google.com/calendar/ical/…/basic.ics"
+            className="mt-1 w-full px-4 py-3 text-base border border-zinc-300 rounded-xl font-mono"
+          />
+          <p className="text-xs text-zinc-500 mt-1">
+            Keep this private — anyone with the link can read the calendar. `webcal://` links are accepted.
+          </p>
+        </div>
+        <div>
+          <label className="text-sm font-medium text-zinc-500">Show as (member color, optional)</label>
+          <select
+            value={memberId ?? ""}
+            onChange={(e) => setMemberId(e.target.value ? Number(e.target.value) : null)}
+            className="mt-1 w-full px-4 py-3 border border-zinc-300 rounded-xl bg-white text-lg"
+          >
+            <option value="">Family (no member)</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-sm font-medium text-zinc-500">Sync every (hours)</label>
+          <input type="number" min={1} max={168} value={interval} onChange={(e) => setIntervalHours(e.target.value)} className="mt-1 w-32 px-4 py-3 text-lg border border-zinc-300 rounded-xl tabular-nums" />
+        </div>
+        {feed && (
+          <label className="flex items-center gap-3">
+            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} className="w-5 h-5" />
+            <span className="text-sm text-zinc-600">Active (uncheck to pause syncing)</span>
+          </label>
+        )}
+        {error && <p className="text-sm text-red-600">{error}</p>}
+        <div className="flex gap-3 pt-2">
+          <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-zinc-300">Cancel</button>
+          <button onClick={save} disabled={pending || !name.trim() || !url.trim()} className="flex-1 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-40">
+            {pending ? "Saving…" : "Save & sync"}
+          </button>
+        </div>
+      </div>
+      {modal}
+    </Sheet>
+  );
+}
+
+function maskUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.host}/…${url.slice(-14)}`;
+  } catch {
+    return url.length > 40 ? url.slice(0, 40) + "…" : url;
+  }
+}
+
+function syncStatus(f: IcalFeed): string {
+  if (!f.last_synced_at) return "not synced yet";
+  const ago = Math.floor(Date.now() / 1000) - f.last_synced_at;
+  const rel = ago < 60 ? "just now" : ago < 3600 ? `${Math.floor(ago / 60)}m ago` : ago < 86400 ? `${Math.floor(ago / 3600)}h ago` : `${Math.floor(ago / 86400)}d ago`;
+  if (f.last_status?.startsWith("error")) return `${f.last_status} (${rel})`;
+  return `synced ${rel}${f.last_event_count != null ? ` · ${f.last_event_count} events` : ""}`;
 }
 
 function AdvancedTab() {

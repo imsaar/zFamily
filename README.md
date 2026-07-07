@@ -38,6 +38,7 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 - **Personal views** at `/me/[memberId]` — each member has their own screen with their chores, schedule, meal vote panel, and rewards. Reverts to family home after configurable idle (default 2 min).
 - **Weather** via Open-Meteo (no API key), with **city/state search** that auto-fills coordinates and IANA timezone in one tap. Header widget + screensaver display.
 - **Google Calendar sync** per family member with incremental sync tokens.
+- **iCal calendar subscriptions** — subscribe to any read-only iCal/`webcal` URL (e.g. a Google "secret address in iCal format"); recurrences are expanded and refreshed on a per-feed interval.
 - **Screensaver** with quiet-hour schedule, clock + next event + weather, tap-to-wake.
 - **Mobile companion PWA** at `/m` — quick chore check-off, event add, meal voting, and shopping list from any phone.
 - **Playwright end-to-end tests** covering critical flows (PIN gates, weather save + header refresh, chore verify, home meal panel).
@@ -51,7 +52,7 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 | `/month` | Full month grid |
 | `/chores` | Per-member chore board with pending verifications and rewards shelf |
 | `/meals` | Weekly meal plan + shopping list panel + meal library + vote-for-next-week |
-| `/settings` | Family (names, nicknames, headshots, roles + PINs), chores, rewards, weather, display (quiet hours, Hijri offset, idle), Google, advanced (factory reset) |
+| `/settings` | Family (names, nicknames, headshots, roles + PINs), chores, rewards, calendar subscriptions (iCal feeds), weather, display (quiet hours, Hijri offset, idle), Google, advanced (factory reset) |
 | `/me/[memberId]` | Personal view — that member's chores, schedule, meal votes, rewards |
 | `/m` | Mobile home (chore progress + today's events + shopping + vote tile) |
 | `/m/chores/[memberId]` | Per-member mobile chore check-off (with verify pills) |
@@ -178,6 +179,32 @@ Add a systemd timer or cron entry:
 
 ```cron
 */15 * * * * curl -s -X POST http://localhost:3000/api/sync >/dev/null
+```
+
+`/api/sync` also refreshes any due iCal subscription feeds (see below). On the
+always-on kiosk this happens automatically anyway — a background poller pings
+`/api/ical/sync` on each feed's interval — so cron is only needed for headless
+installs or to also pull OAuth-linked Google accounts.
+
+## Calendar subscriptions (iCal feeds)
+
+Beyond per-member OAuth sync, you can subscribe to any read-only calendar by its
+**iCal URL** — including a Google Calendar's *Settings → Integrate calendar →
+Secret address in iCal format*, or Apple/Outlook `webcal://` links.
+
+Add one under **Settings → 📆 Calendars**: give it a name, paste the secret
+address, optionally attach it to a member (for color), and set a sync interval
+in hours. Feed events are fetched, recurrences (RRULE/EXDATE) expanded, and
+written into the events table, so they appear across the week/month views and
+home screen like any other event. Feeds refresh on their interval (kiosk poller
+or `POST /api/sync`), and **Sync all** forces an immediate refresh.
+
+Keep secret addresses private — anyone with the link can read that calendar.
+
+Manual refresh from the CLI:
+
+```bash
+curl -X POST 'http://localhost:3000/api/ical/sync?force=1'
 ```
 
 ## Google Calendar setup
@@ -410,7 +437,8 @@ All endpoints:
 |--------|------|------|
 | GET  | `/api/auth/google/start?memberId=X` | Begin Google OAuth for member X |
 | GET  | `/api/auth/google/callback` | OAuth redirect target |
-| POST | `/api/sync` | Pull all linked Google calendars now (also accepts GET) |
+| POST | `/api/sync` | Pull all linked Google calendars + due iCal feeds now (also accepts GET) |
+| POST | `/api/ical/sync` | Refresh due iCal subscription feeds; `?force=1` re-pulls all (also accepts GET) |
 
 ## Development tips
 
