@@ -122,8 +122,9 @@ CREATE TABLE IF NOT EXISTS meals (
   name          TEXT NOT NULL,
   icon          TEXT,
   notes         TEXT,
-  ingredients   TEXT NOT NULL DEFAULT '[]',  -- JSON array of {name, quantity}
+  ingredients   TEXT NOT NULL DEFAULT '[]',  -- JSON array of {name, quantity, unit}
   is_favorite   INTEGER NOT NULL DEFAULT 0,
+  slots         TEXT,                          -- CSV of eligible slots: breakfast,lunch,dinner (NULL = all)
   created_at    INTEGER NOT NULL
 );
 
@@ -187,6 +188,7 @@ CREATE INDEX IF NOT EXISTS redemptions_by_member ON reward_redemptions(member_id
 function migrate(conn: Database.Database) {
   conn.exec(SCHEMA);
   ensureColumn(conn, "meals", "is_favorite", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(conn, "meals", "slots", "TEXT");
   ensureColumn(conn, "members", "role", "TEXT NOT NULL DEFAULT 'parent'");
   ensureColumn(conn, "chore_completions", "verified_at", "INTEGER");
   ensureColumn(conn, "chore_completions", "verified_by", "INTEGER REFERENCES members(id) ON DELETE SET NULL");
@@ -282,19 +284,19 @@ function seedMealsIfEmpty(conn: Database.Database) {
   if (n > 0) return;
   const now = Math.floor(Date.now() / 1000);
   const insert = conn.prepare(
-    "INSERT INTO meals (name, icon, notes, ingredients, created_at) VALUES (?, ?, ?, ?, ?)"
+    "INSERT INTO meals (name, icon, notes, ingredients, slots, created_at) VALUES (?, ?, ?, ?, ?, ?)"
   );
   const seed = [
-    { name: "Oatmeal + berries", icon: "🥣", ingredients: [{ name: "Rolled oats", quantity: "1 cup" }, { name: "Milk", quantity: "2 cups" }, { name: "Berries", quantity: "1 cup" }] },
-    { name: "Avocado toast", icon: "🥑", ingredients: [{ name: "Sourdough bread", quantity: "4 slices" }, { name: "Avocado", quantity: "2" }, { name: "Lemon", quantity: "1" }] },
-    { name: "Turkey sandwich", icon: "🥪", ingredients: [{ name: "Bread", quantity: "8 slices" }, { name: "Turkey", quantity: "1/2 lb" }, { name: "Lettuce", quantity: "1 head" }, { name: "Tomato", quantity: "2" }] },
-    { name: "Grilled salmon", icon: "🐟", ingredients: [{ name: "Salmon fillet", quantity: "1.5 lb" }, { name: "Lemon", quantity: "1" }, { name: "Asparagus", quantity: "1 bunch" }, { name: "Olive oil", quantity: "1 tbsp" }] },
-    { name: "Chicken tikka", icon: "🍛", ingredients: [{ name: "Chicken thighs", quantity: "2 lb" }, { name: "Yogurt", quantity: "1 cup" }, { name: "Tikka masala paste", quantity: "1 jar" }, { name: "Basmati rice", quantity: "2 cups" }] },
-    { name: "Pasta bolognese", icon: "🍝", ingredients: [{ name: "Spaghetti", quantity: "1 lb" }, { name: "Ground beef", quantity: "1 lb" }, { name: "Tomato sauce", quantity: "1 jar" }, { name: "Onion", quantity: "1" }, { name: "Garlic", quantity: "3 cloves" }] },
-    { name: "Taco night", icon: "🌮", ingredients: [{ name: "Ground turkey", quantity: "1 lb" }, { name: "Taco shells", quantity: "12" }, { name: "Cheddar", quantity: "8 oz" }, { name: "Salsa", quantity: "1 jar" }, { name: "Lime", quantity: "2" }] },
-    { name: "Veggie stir-fry", icon: "🥡", ingredients: [{ name: "Broccoli", quantity: "1 head" }, { name: "Bell pepper", quantity: "2" }, { name: "Snap peas", quantity: "1 cup" }, { name: "Soy sauce", quantity: "1/4 cup" }, { name: "Jasmine rice", quantity: "2 cups" }] },
+    { name: "Oatmeal + berries", icon: "🥣", slots: "breakfast", ingredients: [{ name: "Rolled oats", quantity: "1 cup" }, { name: "Milk", quantity: "2 cups" }, { name: "Berries", quantity: "1 cup" }] },
+    { name: "Avocado toast", icon: "🥑", slots: "breakfast,lunch", ingredients: [{ name: "Sourdough bread", quantity: "4 slices" }, { name: "Avocado", quantity: "2" }, { name: "Lemon", quantity: "1" }] },
+    { name: "Turkey sandwich", icon: "🥪", slots: "lunch", ingredients: [{ name: "Bread", quantity: "8 slices" }, { name: "Turkey", quantity: "1/2 lb" }, { name: "Lettuce", quantity: "1 head" }, { name: "Tomato", quantity: "2" }] },
+    { name: "Grilled salmon", icon: "🐟", slots: "dinner", ingredients: [{ name: "Salmon fillet", quantity: "1.5 lb" }, { name: "Lemon", quantity: "1" }, { name: "Asparagus", quantity: "1 bunch" }, { name: "Olive oil", quantity: "1 tbsp" }] },
+    { name: "Chicken tikka", icon: "🍛", slots: "lunch,dinner", ingredients: [{ name: "Chicken thighs", quantity: "2 lb" }, { name: "Yogurt", quantity: "1 cup" }, { name: "Tikka masala paste", quantity: "1 jar" }, { name: "Basmati rice", quantity: "2 cups" }] },
+    { name: "Pasta bolognese", icon: "🍝", slots: "lunch,dinner", ingredients: [{ name: "Spaghetti", quantity: "1 lb" }, { name: "Ground beef", quantity: "1 lb" }, { name: "Tomato sauce", quantity: "1 jar" }, { name: "Onion", quantity: "1" }, { name: "Garlic", quantity: "3 cloves" }] },
+    { name: "Taco night", icon: "🌮", slots: "dinner", ingredients: [{ name: "Ground turkey", quantity: "1 lb" }, { name: "Taco shells", quantity: "12" }, { name: "Cheddar", quantity: "8 oz" }, { name: "Salsa", quantity: "1 jar" }, { name: "Lime", quantity: "2" }] },
+    { name: "Veggie stir-fry", icon: "🥡", slots: "lunch,dinner", ingredients: [{ name: "Broccoli", quantity: "1 head" }, { name: "Bell pepper", quantity: "2" }, { name: "Snap peas", quantity: "1 cup" }, { name: "Soy sauce", quantity: "1/4 cup" }, { name: "Jasmine rice", quantity: "2 cups" }] },
   ];
   for (const m of seed) {
-    insert.run(m.name, m.icon, null, JSON.stringify(m.ingredients), now);
+    insert.run(m.name, m.icon, null, JSON.stringify(m.ingredients), m.slots, now);
   }
 }

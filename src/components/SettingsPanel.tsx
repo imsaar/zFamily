@@ -34,6 +34,8 @@ import { Sheet } from "./Sheet";
 import { useAdminAuth } from "./AdminGate";
 import { PinPadModal } from "./PinPad";
 import { MemberAvatar } from "./MemberAvatar";
+import { IconPicker } from "./IconPicker";
+import { CHORE_TEMPLATES, type ChoreTemplate } from "@/lib/choreTemplates";
 import { readImageAsResizedDataUrl } from "@/lib/image";
 
 type Tab = "members" | "chores" | "rewards" | "calendars" | "weather" | "display" | "advanced";
@@ -51,7 +53,7 @@ export function SettingsPanel({
   settings: Record<string, string>;
   feeds: IcalFeed[];
 }) {
-  const [tab, setTab] = useState<Tab>("members");
+  const [tab, setTab] = useState<Tab>("chores");
 
   return (
     <div className="h-full flex bg-zinc-50">
@@ -215,13 +217,9 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
         </div>
         <div>
           <label className="text-sm font-medium text-zinc-500">Avatar emoji (optional)</label>
-          <input
-            value={emoji ?? ""}
-            onChange={(e) => setEmoji(e.target.value)}
-            placeholder="👧"
-            maxLength={4}
-            className="mt-1 w-24 px-4 py-3 text-center text-2xl border border-zinc-300 rounded-xl"
-          />
+          <div className="mt-1">
+            <IconPicker value={emoji} onChange={setEmoji} category="member" placeholder="👧" />
+          </div>
           <p className="text-xs text-zinc-500 mt-1">
             {member ? "Used when no headshot photo is set." : "You can upload a headshot photo after saving."}
           </p>
@@ -479,18 +477,28 @@ function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members:
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<ChoreWithAssignees | "new" | null>(null);
+  const [seed, setSeed] = useState<ChoreTemplate | null>(null);
+  const [browsing, setBrowsing] = useState(false);
   const { authenticate, modal } = useAdminAuth();
 
   return (
     <div className="max-w-4xl">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-semibold">Chores</h2>
-        <button
-          onClick={() => setEditing("new")}
-          className="px-5 py-3 rounded-xl bg-zinc-900 text-white font-medium"
-        >
-          + Add chore
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setBrowsing(true)}
+            className="px-5 py-3 rounded-xl border-2 border-zinc-300 font-medium"
+          >
+            📋 From library
+          </button>
+          <button
+            onClick={() => { setSeed(null); setEditing("new"); }}
+            className="px-5 py-3 rounded-xl bg-zinc-900 text-white font-medium"
+          >
+            + Add chore
+          </button>
+        </div>
       </div>
       <div className="space-y-3">
         {chores.map((c) => (
@@ -535,11 +543,23 @@ function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members:
         ))}
       </div>
 
+      {browsing && (
+        <ChoreLibrary
+          existing={chores}
+          onClose={() => setBrowsing(false)}
+          onPick={(t) => {
+            setBrowsing(false);
+            setSeed(t);
+            setEditing("new");
+          }}
+        />
+      )}
       {editing && (
         <ChoreEditor
           chore={editing === "new" ? null : editing}
+          template={editing === "new" ? seed : null}
           members={members}
-          onClose={() => setEditing(null)}
+          onClose={() => { setEditing(null); setSeed(null); }}
         />
       )}
       {modal}
@@ -547,22 +567,66 @@ function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members:
   );
 }
 
+function ChoreLibrary({
+  existing,
+  onPick,
+  onClose,
+}: {
+  existing: ChoreWithAssignees[];
+  onPick: (t: ChoreTemplate) => void;
+  onClose: () => void;
+}) {
+  const have = new Set(existing.map((c) => c.title.trim().toLowerCase()));
+  return (
+    <Sheet open onClose={onClose} title="Chore library" width="max-w-2xl">
+      <p className="text-sm text-zinc-500 mb-4">
+        Pick a common chore to start from — you&apos;ll choose who it&apos;s assigned to next.
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        {CHORE_TEMPLATES.map((t) => {
+          const added = have.has(t.title.trim().toLowerCase());
+          return (
+            <button
+              key={t.title}
+              onClick={() => onPick(t)}
+              className="flex items-center gap-3 p-3 rounded-xl border-2 border-zinc-200 text-left hover:bg-zinc-50 active:bg-zinc-100"
+            >
+              <div className="text-3xl w-10 text-center shrink-0">{t.icon}</div>
+              <div className="min-w-0 flex-1">
+                <div className="font-medium truncate flex items-center gap-2">
+                  {t.title}
+                  {added && <span className="text-xs text-emerald-600 shrink-0">✓ added</span>}
+                </div>
+                <div className="text-xs text-zinc-500">
+                  {RECURRENCES.find(([r]) => r === t.recurrence)?.[1] ?? t.recurrence} · {t.points} pts
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </Sheet>
+  );
+}
+
 function ChoreEditor({
   chore,
+  template,
   members,
   onClose,
 }: {
   chore: ChoreWithAssignees | null;
+  template?: ChoreTemplate | null;
   members: Member[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const { authenticate, modal } = useAdminAuth();
-  const [title, setTitle] = useState(chore?.title ?? "");
-  const [icon, setIcon] = useState(chore?.icon ?? "📋");
-  const [points, setPoints] = useState(chore?.points ?? 1);
-  const [recurrence, setRecurrence] = useState(chore?.recurrence ?? "daily");
+  const [title, setTitle] = useState(chore?.title ?? template?.title ?? "");
+  const [icon, setIcon] = useState(chore?.icon ?? template?.icon ?? "📋");
+  const [points, setPoints] = useState(chore?.points ?? template?.points ?? 1);
+  const [recurrence, setRecurrence] = useState(chore?.recurrence ?? template?.recurrence ?? "daily");
   const [assignees, setAssignees] = useState<Set<number>>(new Set(chore?.assignees ?? []));
 
   const onSave = async () => {
@@ -593,12 +657,7 @@ function ChoreEditor({
     <Sheet open onClose={onClose} title={chore ? "Edit chore" : "Add chore"} width="max-w-xl">
       <div className="space-y-5">
         <div className="flex gap-3">
-          <input
-            value={icon ?? ""}
-            onChange={(e) => setIcon(e.target.value)}
-            maxLength={4}
-            className="w-20 px-4 py-3 text-center text-2xl border border-zinc-300 rounded-xl"
-          />
+          <IconPicker value={icon} onChange={setIcon} category="chore" placeholder="📋" />
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -768,7 +827,7 @@ function RewardEditor({ reward, onClose }: { reward: Reward | null; onClose: () 
     <Sheet open onClose={onClose} title={reward ? "Edit reward" : "Add reward"} width="max-w-xl">
       <div className="space-y-4">
         <div className="flex gap-3">
-          <input value={icon ?? ""} onChange={(e) => setIcon(e.target.value)} maxLength={4} className="w-20 px-4 py-3 text-center text-2xl border border-zinc-300 rounded-xl" />
+          <IconPicker value={icon} onChange={setIcon} category="reward" placeholder="🎁" />
           <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Reward title" className="flex-1 px-4 py-3 text-lg border border-zinc-300 rounded-xl" />
         </div>
         <textarea
@@ -964,6 +1023,7 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
   const [resetHour, setResetHour] = useState(settings.chore_reset_hour ?? "4");
   const [idleMin, setIdleMin] = useState(String(Math.round(Number(settings.idle_seconds ?? "300") / 60)));
   const [ssMode, setSsMode] = useState(settings.screensaver_mode ?? "clock");
+  const [keyboard, setKeyboard] = useState(settings.onscreen_keyboard === "true");
   const [personalIdleMin, setPersonalIdleMin] = useState(
     String(Math.round(Number(settings.personal_idle_seconds ?? "120") / 60))
   );
@@ -980,6 +1040,7 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
           ["chore_reset_hour", resetHour],
           ["idle_seconds", String(Math.max(30, Number(idleMin) * 60))],
           ["screensaver_mode", ssMode],
+          ["onscreen_keyboard", String(keyboard)],
           ["personal_idle_seconds", String(Math.max(30, Number(personalIdleMin) * 60))],
           ["hijri_offset", String(Math.max(-3, Math.min(3, Number(hijriOffset) || 0)))],
         ];
@@ -1030,6 +1091,25 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
             </button>
           ))}
         </div>
+      </div>
+      <div>
+        <label className="text-sm font-medium text-zinc-500">⌨️ On-screen keyboard</label>
+        <div className="mt-2 flex gap-2">
+          {([["on", true], ["off", false]] as const).map(([label, val]) => (
+            <button
+              key={label}
+              onClick={() => setKeyboard(val)}
+              className={`px-5 py-2 rounded-full border-2 ${
+                keyboard === val ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200"
+              }`}
+            >
+              {label === "on" ? "On" : "Off"}
+            </button>
+          ))}
+        </div>
+        <p className="text-sm text-zinc-500 mt-1">
+          Show a tap-to-open keyboard when a text field is focused on the wall display. Turn on for touch-only kiosks without a physical keyboard.
+        </p>
       </div>
       <div>
         <label className="text-sm font-medium text-zinc-500">Personal view auto-revert (minutes)</label>

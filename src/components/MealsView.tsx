@@ -25,12 +25,29 @@ import {
   applyWinnersAction,
 } from "@/app/actions";
 import { useRequestPin } from "./PinPad";
+import { useAdminAuth } from "./AdminGate";
+import { IconPicker } from "./IconPicker";
 
 const SLOTS: Array<{ key: MealSlot; label: string; icon: string }> = [
   { key: "breakfast", label: "Breakfast", icon: "🥣" },
   { key: "lunch", label: "Lunch", icon: "🥪" },
   { key: "dinner", label: "Dinner", icon: "🍽️" },
 ];
+
+// Local copy — can't import the runtime value from "@/lib/meals" (it pulls in
+// the server-only db module). Keep in sync with ALL_SLOTS there.
+const ALL_SLOTS: MealSlot[] = ["breakfast", "lunch", "dinner"];
+
+// Common measures for meal ingredients. "" = no unit (e.g. "2 eggs").
+const UNITS: string[] = [
+  "", "each", "lb", "oz", "g", "kg", "ml", "L",
+  "cup", "tbsp", "tsp", "clove", "can", "pkg", "bunch", "slice", "pinch",
+];
+
+function ingredientAmount(ing: Ingredient): string | null {
+  const label = [ing.quantity?.trim(), ing.unit?.trim()].filter(Boolean).join(" ").trim();
+  return label || null;
+}
 
 export function MealsView({
   days,
@@ -316,16 +333,69 @@ function MealPicker({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [addToShop, setAddToShop] = useState(true);
+  const [filter, setFilter] = useState<Set<string>>(new Set());
+  const [ingQuery, setIngQuery] = useState("");
+  const [showFilter, setShowFilter] = useState(false);
+  const [chosen, setChosen] = useState<Meal | null>(null);
+  const [selectedIdx, setSelectedIdx] = useState<Set<number>>(new Set());
 
-  const pick = (mealId: number) => {
+  const label = SLOTS.find((s) => s.key === slot)?.label ?? slot;
+  const dateLabel = format(new Date(`${date}T12:00:00`), "EEE, MMM d");
+
+  // Only meals eligible for this slot (breakfast/lunch/dinner).
+  const eligible = useMemo(() => meals.filter((m) => m.slots.includes(slot)), [meals, slot]);
+
+  // Unique ingredient names across the eligible meals, most common first —
+  // the "what do I have?" chips used to filter the meal list.
+  const allIngredients = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const m of eligible)
+      for (const ing of m.ingredients) {
+        const n = ing.name.trim().toLowerCase();
+        if (n) counts.set(n, (counts.get(n) ?? 0) + 1);
+      }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([n]) => n);
+  }, [eligible]);
+
+  const q = ingQuery.trim().toLowerCase();
+  const chips = allIngredients.filter((n) => !q || n.includes(q)).slice(0, 30);
+
+  // Narrow the eligible meals by the ingredient filter (a meal matches when it
+  // contains every selected filter ingredient).
+  const shown = useMemo(() => {
+    if (filter.size === 0) return eligible;
+    return eligible.filter((m) => {
+      const names = m.ingredients.map((i) => i.name.trim().toLowerCase());
+      return [...filter].every((f) => names.some((n) => n.includes(f)));
+    });
+  }, [eligible, filter]);
+
+  const favorites = shown.filter((m) => m.is_favorite);
+  const others = shown.filter((m) => !m.is_favorite);
+
+  const toggleFilter = (n: string) => {
+    const next = new Set(filter);
+    if (next.has(n)) next.delete(n);
+    else next.add(n);
+    setFilter(next);
+  };
+
+  const openConfirm = (m: Meal) => {
+    setChosen(m);
+    setSelectedIdx(new Set(m.ingredients.map((_, i) => i)));
+  };
+
+  const confirm = () => {
+    if (!chosen) return;
     start(async () => {
-      if (addToShop) await planAndShopAction(date, slot, mealId);
-      else await setPlanSlotAction(date, slot, mealId);
+      await planAndShopAction(date, slot, chosen.id, Array.from(selectedIdx));
       router.refresh();
       onClose();
     });
   };
+
   const clear = () => {
     start(async () => {
       await setPlanSlotAction(date, slot, null);
@@ -334,44 +404,166 @@ function MealPicker({
     });
   };
 
-  const label = SLOTS.find((s) => s.key === slot)?.label ?? slot;
-  const dateLabel = format(new Date(`${date}T12:00:00`), "EEE, MMM d");
+  // ── Confirm step: choose which ingredients go on the shopping list ──
+  if (chosen) {
+    const toggleIdx = (i: number) => {
+      const next = new Set(selectedIdx);
+      if (next.has(i)) next.delete(i);
+      else next.add(i);
+      setSelectedIdx(next);
+    };
+    const hasIngredients = chosen.ingredients.length > 0;
+    return (
+      <Sheet open onClose={onClose} title={`${dateLabel} · ${label}`} width="max-w-xl">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="text-3xl">{chosen.icon}</div>
+            <div className="text-lg font-semibold">{chosen.name}</div>
+          </div>
 
-  const favorites = meals.filter((m) => m.is_favorite);
-  const others = meals.filter((m) => !m.is_favorite);
+          {hasIngredients ? (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-sm font-medium text-zinc-500">Add to shopping list</div>
+                <div className="flex gap-3 text-sm">
+                  <button onClick={() => setSelectedIdx(new Set(chosen.ingredients.map((_, i) => i)))} className="text-zinc-600">All</button>
+                  <button onClick={() => setSelectedIdx(new Set())} className="text-zinc-600">None</button>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {chosen.ingredients.map((ing, i) => {
+                  const amount = ingredientAmount(ing);
+                  const on = selectedIdx.has(i);
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => toggleIdx(i)}
+                      className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left active:bg-zinc-100"
+                    >
+                      <span
+                        className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${
+                          on ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-400 bg-white"
+                        }`}
+                      >
+                        {on ? (
+                          <svg viewBox="0 0 20 20" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="3">
+                            <path d="M4 10l4 4 8-8" strokeLinecap="square" strokeLinejoin="miter" />
+                          </svg>
+                        ) : null}
+                      </span>
+                      <span className="flex-1">{ing.name}</span>
+                      {amount && <span className="text-sm text-zinc-500">{amount}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-zinc-500 italic">No ingredients on this meal — it&apos;ll just be added to the plan.</p>
+          )}
 
+          <div className="flex gap-3 pt-2">
+            <button onClick={() => setChosen(null)} className="px-5 py-3 rounded-xl border border-zinc-300">Back</button>
+            <button
+              onClick={confirm}
+              disabled={pending}
+              className="flex-1 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-40"
+            >
+              Add to plan{selectedIdx.size > 0 ? ` + ${selectedIdx.size} to list` : ""}
+            </button>
+          </div>
+        </div>
+      </Sheet>
+    );
+  }
+
+  // ── Pick step: filter by ingredient, then choose a meal ──
   return (
     <Sheet open onClose={onClose} title={`${dateLabel} · ${label}`} width="max-w-2xl">
       <div className="space-y-4">
-        <label className="flex items-center gap-2 text-sm text-zinc-600">
-          <input
-            type="checkbox"
-            checked={addToShop}
-            onChange={(e) => setAddToShop(e.target.checked)}
-            className="w-5 h-5"
-          />
-          Add ingredients to shopping list
-        </label>
+        <div>
+          <button
+            onClick={() => setShowFilter((v) => !v)}
+            className="flex items-center gap-2 text-sm font-medium text-zinc-600"
+          >
+            🥗 Filter by ingredient
+            {filter.size > 0 && (
+              <span className="min-w-5 h-5 px-1.5 rounded-full bg-zinc-900 text-white text-xs flex items-center justify-center">
+                {filter.size}
+              </span>
+            )}
+            <span className="text-zinc-400">{showFilter ? "▲" : "▼"}</span>
+          </button>
+          {filter.size > 0 && !showFilter && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {[...filter].map((n) => (
+                <button key={n} onClick={() => toggleFilter(n)} className="px-3 py-1 rounded-full bg-zinc-900 text-white text-sm">
+                  {n} ×
+                </button>
+              ))}
+            </div>
+          )}
+          {showFilter && (
+            <div className="mt-2 space-y-2">
+              <input
+                value={ingQuery}
+                onChange={(e) => setIngQuery(e.target.value)}
+                placeholder="Search ingredients…"
+                className="w-full px-3 py-2 border border-zinc-300 rounded-lg"
+              />
+              <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto">
+                {chips.map((n) => {
+                  const on = filter.has(n);
+                  return (
+                    <button
+                      key={n}
+                      onClick={() => toggleFilter(n)}
+                      className={`px-3 py-1.5 rounded-full text-sm border ${
+                        on ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-300 text-zinc-700 active:bg-zinc-100"
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  );
+                })}
+                {chips.length === 0 && <div className="text-sm text-zinc-400 italic py-2">No matching ingredients.</div>}
+              </div>
+              {filter.size > 0 && (
+                <button onClick={() => setFilter(new Set())} className="text-sm text-zinc-500">Clear filter</button>
+              )}
+            </div>
+          )}
+        </div>
 
-        {favorites.length > 0 && (
-          <div>
-            <div className="text-xs uppercase tracking-wider text-zinc-400 mb-2">❤️ Favorites</div>
-            <div className="grid grid-cols-2 gap-3">
-              {favorites.map((m) => (
-                <MealPickerCard key={m.id} meal={m} selected={current?.id === m.id} disabled={pending} onPick={() => pick(m.id)} />
-              ))}
-            </div>
+        {shown.length === 0 ? (
+          <div className="text-center py-8 text-zinc-400 italic">
+            {filter.size > 0
+              ? "No meals match those ingredients."
+              : `No meals marked for ${label.toLowerCase()} yet — add one in the library.`}
           </div>
-        )}
-        {others.length > 0 && (
-          <div>
-            {favorites.length > 0 && <div className="text-xs uppercase tracking-wider text-zinc-400 mb-2">All meals</div>}
-            <div className="grid grid-cols-2 gap-3">
-              {others.map((m) => (
-                <MealPickerCard key={m.id} meal={m} selected={current?.id === m.id} disabled={pending} onPick={() => pick(m.id)} />
-              ))}
-            </div>
-          </div>
+        ) : (
+          <>
+            {favorites.length > 0 && (
+              <div>
+                <div className="text-xs uppercase tracking-wider text-zinc-400 mb-2">❤️ Favorites</div>
+                <div className="grid grid-cols-2 gap-3">
+                  {favorites.map((m) => (
+                    <MealPickerCard key={m.id} meal={m} selected={current?.id === m.id} disabled={pending} onPick={() => openConfirm(m)} />
+                  ))}
+                </div>
+              </div>
+            )}
+            {others.length > 0 && (
+              <div>
+                {favorites.length > 0 && <div className="text-xs uppercase tracking-wider text-zinc-400 mb-2">All meals</div>}
+                <div className="grid grid-cols-2 gap-3">
+                  {others.map((m) => (
+                    <MealPickerCard key={m.id} meal={m} selected={current?.id === m.id} disabled={pending} onPick={() => openConfirm(m)} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         <div className="flex gap-3 pt-2">
@@ -461,6 +653,13 @@ function MealLibrary({ meals, onClose }: { meals: Meal[]; onClose: () => void })
               <div className="font-medium">{m.name}</div>
               <div className="text-xs text-zinc-500 truncate">
                 {m.ingredients.map((i) => i.name).join(", ")}
+              </div>
+              <div className="mt-1 flex gap-1">
+                {SLOTS.filter((s) => m.slots.includes(s.key)).map((s) => (
+                  <span key={s.key} className="text-[10px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-600" title={s.label}>
+                    {s.icon} {s.label}
+                  </span>
+                ))}
               </div>
             </button>
             <button
@@ -698,8 +897,10 @@ function ProposeSheet({
   const [pending, start] = useTransition();
   const [filter, setFilter] = useState<"favorites" | "all">("favorites");
 
-  const favorites = meals.filter((m) => m.is_favorite && !alreadyProposed.has(m.id));
-  const others = meals.filter((m) => !m.is_favorite && !alreadyProposed.has(m.id));
+  // Voting fills next week's dinner slots, so only dinner-eligible meals.
+  const dinnerMeals = meals.filter((m) => m.slots.includes("dinner"));
+  const favorites = dinnerMeals.filter((m) => m.is_favorite && !alreadyProposed.has(m.id));
+  const others = dinnerMeals.filter((m) => !m.is_favorite && !alreadyProposed.has(m.id));
   const shown = filter === "favorites"
     ? (favorites.length > 0 ? favorites : others)
     : [...favorites, ...others];
@@ -759,39 +960,86 @@ function ProposeSheet({
 
 function MealEditor({ meal, onClose }: { meal: Meal | null; onClose: () => void }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  // NOTE: do NOT use useTransition here — useAdminAuth opens its PIN modal via
+  // a state update that a transition deprioritizes, so the pad never shows and
+  // the save hangs. Mirror SettingsPanel's plain setPending/await pattern.
+  const [pending, setPending] = useState(false);
+  const { authenticate, modal } = useAdminAuth();
   const [name, setName] = useState(meal?.name ?? "");
   const [icon, setIcon] = useState(meal?.icon ?? "🍽️");
   const [notes, setNotes] = useState(meal?.notes ?? "");
   const [ingredients, setIngredients] = useState<Ingredient[]>(meal?.ingredients ?? [{ name: "", quantity: "" }]);
+  const [slots, setSlots] = useState<Set<MealSlot>>(new Set(meal?.slots ?? ALL_SLOTS));
 
-  const save = () => {
-    if (!name.trim()) return;
-    const cleaned = ingredients.filter((i) => i.name.trim()).map((i) => ({ name: i.name.trim(), quantity: i.quantity?.trim() || undefined }));
-    start(async () => {
-      const data = { name: name.trim(), icon: icon || null, notes: notes || null, ingredients: cleaned };
-      if (meal) await updateMealAction(meal.id, data);
-      else await createMealAction(data);
-      router.refresh();
-      onClose();
-    });
+  const toggleSlot = (s: MealSlot) => {
+    const next = new Set(slots);
+    if (next.has(s)) next.delete(s);
+    else next.add(s);
+    setSlots(next);
   };
 
-  const del = () => {
+  const save = async () => {
+    if (!name.trim() || slots.size === 0) return;
+    const cleaned = ingredients
+      .filter((i) => i.name.trim())
+      .map((i) => ({ name: i.name.trim(), quantity: i.quantity?.trim() || undefined, unit: i.unit?.trim() || undefined }));
+    setPending(true);
+    try {
+      const data = { name: name.trim(), icon: icon || null, notes: notes || null, ingredients: cleaned, slots: ALL_SLOTS.filter((s) => slots.has(s)) };
+      const ok = await authenticate((auth) =>
+        meal ? updateMealAction(meal.id, data, auth) : createMealAction(data, auth)
+      );
+      if (ok) {
+        router.refresh();
+        onClose();
+      }
+    } finally {
+      setPending(false);
+    }
+  };
+
+  const del = async () => {
     if (!meal || !confirm(`Delete "${meal.name}"?`)) return;
-    start(async () => {
-      await deleteMealAction(meal.id);
-      router.refresh();
-      onClose();
-    });
+    setPending(true);
+    try {
+      const ok = await authenticate((auth) => deleteMealAction(meal.id, auth));
+      if (ok) {
+        router.refresh();
+        onClose();
+      }
+    } finally {
+      setPending(false);
+    }
   };
 
   return (
     <Sheet open onClose={onClose} title={meal ? "Edit meal" : "New meal"} width="max-w-xl">
       <div className="space-y-4">
         <div className="flex gap-3">
-          <input value={icon ?? ""} onChange={(e) => setIcon(e.target.value)} maxLength={4} className="w-20 px-4 py-3 text-center text-2xl border border-zinc-300 rounded-xl" />
+          <IconPicker value={icon} onChange={setIcon} category="meal" placeholder="🍽️" />
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Meal name" className="flex-1 px-4 py-3 text-lg border border-zinc-300 rounded-xl" />
+        </div>
+
+        <div>
+          <label className="text-sm font-medium text-zinc-500">Good for</label>
+          <div className="mt-2 flex gap-2">
+            {SLOTS.map((s) => {
+              const on = slots.has(s.key);
+              return (
+                <button
+                  key={s.key}
+                  onClick={() => toggleSlot(s.key)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+                    on ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-600"
+                  }`}
+                >
+                  <span>{s.icon}</span>
+                  <span>{s.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          {slots.size === 0 && <p className="text-xs text-red-500 mt-1">Pick at least one meal time.</p>}
         </div>
 
         <div>
@@ -807,7 +1055,7 @@ function MealEditor({ meal, onClose }: { meal: Meal | null; onClose: () => void 
                     setIngredients(next);
                   }}
                   placeholder="Ingredient"
-                  className="flex-1 px-3 py-2 border border-zinc-300 rounded-lg"
+                  className="flex-1 min-w-0 px-3 py-2 border border-zinc-300 rounded-lg"
                 />
                 <input
                   value={ing.quantity ?? ""}
@@ -817,11 +1065,24 @@ function MealEditor({ meal, onClose }: { meal: Meal | null; onClose: () => void 
                     setIngredients(next);
                   }}
                   placeholder="Qty"
-                  className="w-28 px-3 py-2 border border-zinc-300 rounded-lg"
+                  className="w-16 px-3 py-2 border border-zinc-300 rounded-lg"
                 />
+                <select
+                  value={ing.unit ?? ""}
+                  onChange={(e) => {
+                    const next = [...ingredients];
+                    next[i] = { ...next[i], unit: e.target.value };
+                    setIngredients(next);
+                  }}
+                  className="w-24 px-2 py-2 border border-zinc-300 rounded-lg bg-white"
+                >
+                  {UNITS.map((u) => (
+                    <option key={u} value={u}>{u === "" ? "unit" : u}</option>
+                  ))}
+                </select>
                 <button
                   onClick={() => setIngredients(ingredients.filter((_, j) => j !== i))}
-                  className="w-10 text-zinc-400"
+                  className="w-8 shrink-0 text-zinc-400"
                 >
                   ×
                 </button>
@@ -855,13 +1116,14 @@ function MealEditor({ meal, onClose }: { meal: Meal | null; onClose: () => void 
           <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-zinc-300">Cancel</button>
           <button
             onClick={save}
-            disabled={pending || !name.trim()}
+            disabled={pending || !name.trim() || slots.size === 0}
             className="flex-1 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-40"
           >
             Save
           </button>
         </div>
       </div>
+      {modal}
     </Sheet>
   );
 }

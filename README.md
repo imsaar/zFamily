@@ -18,6 +18,7 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 - [Authentication (PINs)](#authentication-pins)
 - [Data & backup](#data--backup)
 - [Mobile companion (PWA)](#mobile-companion-pwa)
+- [Remote access (Tailscale)](#remote-access-tailscale)
 - [Screensaver & quiet hours](#screensaver--quiet-hours)
 - [Testing](#testing)
 - [Project layout](#project-layout)
@@ -30,10 +31,13 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 - **Family home dashboard** with Quranic verse of the day (Arabic + English translation, deterministic per date), Hijri (Umm al-Qura) date with moon-sighting correction, weekly overview, today's breakfast/lunch/dinner panel, and quick tiles.
 - **Weekly + monthly calendar** with per-member color coding, all-day strip, hourly grid, red "now" line.
 - **Recurring events** — locally-created events support weekly, monthly, or quarterly recurrence (client-expanded from RRULE).
-- **Chore board** with pending → verified two-step (parents verify children; parents peer-verify each other), big touch check-off circles, daily/weekly/weekend recurrence, points, streaks (🔥), weekly progress bars.
+- **Chore board** with pending → verified two-step (parents verify children; parents peer-verify each other), big touch check-off circles, daily/weekly/weekend recurrence, points, streaks (🔥), weekly progress bars. A **chore library** of common household chores (empty the dishwasher, take garbage to curb every Sunday, clean the kitchen…) pre-fills the editor so you just assign who does it.
 - **Gamification** — every verified chore earns points; parent-approved rewards shelf lets kids spend points on real rewards.
-- **Meal planner + family voting** — weekly breakfast/lunch/dinner grid, meal library with ingredients, favorites (❤️), weekly vote (medals for winners) with one-tap "apply top winners to next week's dinners".
-- **Shopping list** — auto-populated from planned meals, shared with the mobile companion.
+- **Meal planner + family voting** — weekly breakfast/lunch/dinner grid, meal library with ingredients (quantity + unit), favorites (❤️), weekly vote (medals for winners) with one-tap "apply top winners to next week's dinners". Each meal is marked eligible for breakfast/lunch/dinner, so the slot picker only offers meals that fit — and you can filter the list by an ingredient you already have.
+- **Shopping list** — planned meals add their ingredients (you choose which ones), shared with the mobile companion.
+- **Emoji/icon picker** — a curated tap-to-choose icon grid everywhere an icon is set (members, chores, rewards, meals), with a "type your own" box for any emoji.
+- **On-screen keyboard** (optional, Settings → Display) — a touch QWERTY that surfaces on a ⌨️ button when a text field is focused, for kiosks with no physical keyboard.
+- **Quran verse context** — tap the verse-of-the-day reference to open the ayah in an in-app tanzil.net reader (Ali Quli Qarai translation); long verses are clamped with a "read the full ayah" link. Stays inside the app — no external browser window on the locked kiosk.
 - **PIN authentication** — 4-digit PIN per member with on-screen numeric keypad. Required for personal actions (verify/vote/redeem) and admin actions (settings/rewards/chores/family). First-launch gate forces parents to set a PIN.
 - **Personal views** at `/me/[memberId]` — each member has their own screen with their chores, schedule, meal vote panel, and rewards. Reverts to family home after configurable idle (default 2 min).
 - **Weather** via Open-Meteo (no API key), with **city/state search** that auto-fills coordinates and IANA timezone in one tap. Header widget + screensaver display.
@@ -130,7 +134,12 @@ Environment=ZFAMILY_BASE_URL=http://localhost:3000
 # Environment=GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
 # Environment=GOOGLE_CLIENT_SECRET=your-secret
 EnvironmentFile=-/etc/zfamily.env
-ExecStart=/usr/bin/npm start
+# systemd runs with a minimal PATH and needs an absolute executable — the
+# #!/usr/bin/env node shebang in npm/next also needs node on PATH. Point at
+# node directly and add its directory to PATH. Find your node path with:
+#   readlink -f "$(which node)"      # e.g. /usr/bin/node or /usr/local/bin/node
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+ExecStart=/usr/bin/node /opt/zfamily/node_modules/next/dist/bin/next start
 Restart=on-failure
 RestartSec=5s
 
@@ -185,6 +194,33 @@ Add a systemd timer or cron entry:
 always-on kiosk this happens automatically anyway — a background poller pings
 `/api/ical/sync` on each feed's interval — so cron is only needed for headless
 installs or to also pull OAuth-linked Google accounts.
+
+### 7. Updating to a new version
+
+Pull the latest code, reinstall/rebuild, and restart the service. Your data lives in `ZFAMILY_DATA_DIR` (`/var/lib/zfamily`), **not** in the app directory, so updates never touch the database — schema migrations run automatically on the next boot.
+
+```bash
+cd /opt/zfamily
+sudo systemctl stop zfamily        # optional; stops it briefly for a clean swap
+git pull                           # or: git fetch && git checkout <tag/branch>
+npm install                        # picks up any new/updated dependencies
+npm run build                      # Turbopack production build + full type-check
+sudo systemctl restart zfamily     # (start, if you stopped it above)
+sudo systemctl status zfamily      # confirm it came back healthy
+```
+
+Then reload the kiosk display so the browser picks up the new assets (favicon, icons, JS):
+
+```bash
+# from the kiosk desktop session — reload the Chromium kiosk tab
+DISPLAY=:0 xdotool key ctrl+shift+r     # hard reload (clears cached favicon/JS)
+# …or simply reboot the device:  sudo reboot
+```
+
+Notes:
+- **Back up first** if it's a big jump — copy `ZFAMILY_DATA_DIR` (see [Data & backup](#data--backup)). Migrations are additive (`CREATE IF NOT EXISTS` + `ensureColumn`), so downgrades aren't guaranteed to work; a copy lets you roll back.
+- If `npm run build` fails, the old build is still on disk and the service keeps serving it until you `restart`, so a failed update won't take the wall display down.
+- If a build pulls in a new Node major, update the `PATH`/`ExecStart` node path in the systemd unit to match (`readlink -f "$(which node)"`).
 
 ## Calendar subscriptions (iCal feeds)
 
@@ -257,6 +293,7 @@ Personal-scope OAuth apps in Google Cloud stay in "testing" mode indefinitely un
 | Personal-view auto-revert | Display | 2 min | Personal `/me/[id]` view reverts to family home after this idle |
 | Chore reset hour | Display | 4 (04:00) | Daily chores reset at this hour local |
 | Hijri offset (moon-sighting) | Display | 0 | Shift Islamic (Umm al-Qura) date by ±3 days |
+| On-screen keyboard | Display | Off | Show a touch QWERTY (via a ⌨️ button) when a text field is focused — for kiosks with no physical keyboard |
 | Member PIN | Family | not set | 4-digit numeric — required for personal + admin actions |
 | Member role | Family | parent | Parent or child; determines verify rules and access to admin |
 | Member nickname | Family | none | Optional friendly name shown around the app in place of the given name |
@@ -335,7 +372,49 @@ Features:
 **Install on iOS**: Safari → open `/m` → Share → Add to Home Screen.
 **Install on Android**: Chrome → open `/m` → menu → Install app.
 
-For remote access, put the device behind Tailscale or expose it via a reverse proxy (`caddy`, `nginx`) with HTTPS.
+To reach the dashboard and PWA from phones and laptops that aren't on your home Wi‑Fi, see [Remote access (Tailscale)](#remote-access-tailscale) below.
+
+## Remote access (Tailscale)
+
+[Tailscale](https://tailscale.com) is the simplest way to reach the wall display's dashboard from other devices — your phone, a laptop, another room — without port‑forwarding, a public IP, or exposing zFamily to the internet. It builds a private WireGuard mesh (your "tailnet"); only devices you've signed in can connect. This is the recommended approach over a public reverse proxy for a single‑family home hub.
+
+zFamily's server already listens on all interfaces (`0.0.0.0:3000`), so once the host is on your tailnet it's reachable over the Tailscale link with no app changes.
+
+### 1. Install Tailscale on the kiosk host
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+```
+
+Follow the printed URL to authenticate the device into your tailnet. Give it a recognizable name (e.g. `zfamily-kiosk`) in the [Tailscale admin console](https://login.tailscale.com/admin/machines) — with [MagicDNS](https://tailscale.com/kb/1081/magicdns) enabled (on by default) that name becomes its hostname.
+
+### 2. Install Tailscale on the devices that need access
+
+Install the Tailscale app on each phone/laptop ([iOS](https://apps.apple.com/app/tailscale/id1470499037), Android, macOS, Windows, Linux) and sign in with the **same account**. They all join the one tailnet and can see each other.
+
+### 3. Open the dashboard from anywhere on the tailnet
+
+Using the kiosk's MagicDNS name (or its `100.x.y.z` Tailscale IP from the admin console):
+
+- Wall dashboard: `http://zfamily-kiosk:3000`
+- Mobile PWA: `http://zfamily-kiosk:3000/m`
+
+This works from cellular data too — Tailscale routes the traffic privately. No ports are opened on your router.
+
+### 4. (Recommended) HTTPS with `tailscale serve`
+
+Installing the PWA to a phone home screen (service workers) requires a **secure context** — HTTPS or `localhost`. Plain `http://<host>:3000` over the tailnet isn't one. `tailscale serve` gives you a free HTTPS certificate scoped to your tailnet:
+
+```bash
+# one-time: enable HTTPS certs for your tailnet in the admin console (HTTPS Certificates)
+sudo tailscale serve --bg 3000
+sudo tailscale serve status     # shows the https://zfamily-kiosk.<tailnet>.ts.net URL
+```
+
+Then use `https://zfamily-kiosk.<your-tailnet>.ts.net` (and `/m` for the PWA). The certificate is trusted automatically on tailnet devices, and Add‑to‑Home‑Screen works.
+
+> **Keep it private.** Do **not** use `tailscale funnel` (which publishes the URL to the public internet) unless you also front zFamily with the PIN protections and understand the exposure — there is no login wall, only per‑action PINs. For family‑only access, `tailscale serve` (tailnet‑only) is the right choice.
 
 ## Screensaver & quiet hours
 
@@ -481,6 +560,23 @@ npm run test:e2e:ui      # interactive
 - **Do not put either inside `useTransition`'s `start(async () => …)`** — React 19 defers the modal state update inside async transitions and the PIN pad never opens. Use plain `useState<boolean>` for `pending`.
 
 ## Troubleshooting
+
+**Service won't start — `status=203/EXEC`, flapping between `activating (auto-restart)` and failed.**
+systemd can't execute the `ExecStart` binary (wrong path, not executable, or its
+`#!/usr/bin/env node` shebang can't find `node` on systemd's minimal `PATH`).
+Find your real paths on the device and use absolute ones:
+```bash
+readlink -f "$(which node)"     # e.g. /usr/bin/node or /usr/local/bin/node
+ls /opt/zfamily/node_modules/next/dist/bin/next   # confirm the app is installed
+```
+Then set (in `/etc/systemd/system/zfamily.service`) `ExecStart=<that node path> /opt/zfamily/node_modules/next/dist/bin/next start` and `Environment=PATH=<node dir>:/usr/bin:/bin`, then:
+```bash
+sudo systemctl daemon-reload && sudo systemctl restart zfamily
+journalctl -u zfamily -n 50 --no-pager
+```
+
+**Service starts then exits (not 203).**
+The app launched but crashed. Check `journalctl -u zfamily -n 50 --no-pager`. Common causes: no production build (`npm run build` in `/opt/zfamily`), missing `node_modules` (`npm ci`), or the data dir isn't writable by the service user (`sudo chown -R zfamily:zfamily /var/lib/zfamily`).
 
 **Screen doesn't wake on tap.**
 Check that the touch device is mapped to the correct output:

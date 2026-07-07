@@ -6,6 +6,7 @@ import type { MemberColor, MemberRole } from "@/lib/types";
 import { COLOR_CLASSES, MEMBER_COLORS } from "@/lib/types";
 import type { GeocodeResult } from "@/lib/geocode";
 import { completeFamilySetupAction, searchCityAction } from "@/app/actions";
+import { IconPicker } from "./IconPicker";
 
 type Draft = {
   key: number;
@@ -98,12 +99,11 @@ export function FamilySetupGate() {
             <div className="space-y-3">
               {members.map((m) => (
                 <div key={m.key} className="bg-white rounded-2xl border border-zinc-200 p-4 flex items-center gap-3">
-                  <input
+                  <IconPicker
                     value={m.emoji}
-                    onChange={(e) => patch(m.key, { emoji: e.target.value })}
+                    onChange={(v) => patch(m.key, { emoji: v })}
+                    category="member"
                     placeholder="🙂"
-                    maxLength={4}
-                    className="w-16 px-2 py-3 text-center text-2xl border border-zinc-300 rounded-xl shrink-0"
                   />
                   <div className="flex-1 min-w-0 flex flex-col gap-2">
                     <input
