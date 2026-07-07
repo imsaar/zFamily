@@ -36,7 +36,7 @@ import { PinPadModal } from "./PinPad";
 import { MemberAvatar } from "./MemberAvatar";
 import { readImageAsResizedDataUrl } from "@/lib/image";
 
-type Tab = "members" | "chores" | "rewards" | "calendars" | "weather" | "display" | "google" | "advanced";
+type Tab = "members" | "chores" | "rewards" | "calendars" | "weather" | "display" | "advanced";
 
 export function SettingsPanel({
   members,
@@ -63,7 +63,6 @@ export function SettingsPanel({
           ["calendars", "📆 Calendars"],
           ["weather", "🌤️ Weather"],
           ["display", "🌙 Display"],
-          ["google", "🔗 Google"],
           ["advanced", "⚠️ Advanced"],
         ] as Array<[Tab, string]>).map(([key, label]) => (
           <button
@@ -84,7 +83,6 @@ export function SettingsPanel({
         {tab === "calendars" && <CalendarsTab feeds={feeds} members={members} />}
         {tab === "weather" && <WeatherTab settings={settings} />}
         {tab === "display" && <DisplayTab settings={settings} />}
-        {tab === "google" && <GoogleTab members={members} />}
         {tab === "advanced" && <AdvancedTab />}
       </div>
     </div>
@@ -1070,13 +1068,13 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
   );
 }
 
-function GoogleTab({ members }: { members: Member[] }) {
+function GoogleAccountsSection({ members }: { members: Member[] }) {
   return (
-    <div className="max-w-2xl space-y-5">
-      <h2 className="text-2xl font-semibold mb-2">Google Calendar sync</h2>
-      <p className="text-zinc-500">
-        Link each family member to their Google account to pull events from their personal calendar.
-        Events created on phones flow into zFamily automatically.
+    <section>
+      <h3 className="text-lg font-semibold">Google accounts</h3>
+      <p className="text-sm text-zinc-500 mt-1 mb-4">
+        Link each family member to their Google account to pull events from their personal calendar
+        (two-way, via OAuth). Events created on phones flow into zFamily automatically.
       </p>
 
       <div className="space-y-3">
@@ -1098,11 +1096,11 @@ function GoogleTab({ members }: { members: Member[] }) {
         ))}
       </div>
 
-      <div className="mt-8 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
+      <div className="mt-4 p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900">
         <strong>Setup required:</strong> Set the env vars <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>,
         and <code>ZFAMILY_BASE_URL</code> before linking. See README for details.
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -1124,9 +1122,14 @@ function CalendarsTab({ feeds, members }: { feeds: IcalFeed[]; members: Member[]
   };
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-3xl space-y-10">
+      <h2 className="text-2xl font-semibold">Calendars</h2>
+
+      <GoogleAccountsSection members={members} />
+
+      <section>
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-2xl font-semibold">Calendar subscriptions</h2>
+        <h3 className="text-lg font-semibold">Calendar subscriptions</h3>
         <div className="flex gap-2">
           {feeds.length > 0 && (
             <button onClick={syncAll} disabled={syncing} className="px-4 py-3 rounded-xl border border-zinc-300 disabled:opacity-50">
@@ -1191,6 +1194,7 @@ function CalendarsTab({ feeds, members }: { feeds: IcalFeed[]; members: Member[]
           );
         })}
       </div>
+      </section>
 
       {editing && (
         <FeedEditor feed={editing === "new" ? null : editing} members={members} onClose={() => setEditing(null)} />

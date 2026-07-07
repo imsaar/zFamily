@@ -52,7 +52,7 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 | `/month` | Full month grid |
 | `/chores` | Per-member chore board with pending verifications and rewards shelf |
 | `/meals` | Weekly meal plan + shopping list panel + meal library + vote-for-next-week |
-| `/settings` | Family (names, nicknames, headshots, roles + PINs), chores, rewards, calendar subscriptions (iCal feeds), weather, display (quiet hours, Hijri offset, idle), Google, advanced (factory reset) |
+| `/settings` | Family (names, nicknames, headshots, roles + PINs), chores, rewards, calendars (Google account links + iCal subscriptions), weather, display (quiet hours, Hijri offset, idle), advanced (factory reset) |
 | `/me/[memberId]` | Personal view — that member's chores, schedule, meal votes, rewards |
 | `/m` | Mobile home (chore progress + today's events + shopping + vote tile) |
 | `/m/chores/[memberId]` | Per-member mobile chore check-off (with verify pills) |
@@ -222,7 +222,7 @@ curl -X POST 'http://localhost:3000/api/ical/sync?force=1'
    export ZFAMILY_BASE_URL=http://localhost:3000
    ```
 
-6. In **Settings → Google**, tap "Link Google" next to each family member.
+6. In **Settings → 📆 Calendars → Google accounts**, tap "Link Google" next to each family member.
 7. Each person authorizes their own Google account; their primary calendar starts syncing to zFamily.
 
 Sync is incremental — after the first pull, only changed events transfer.
@@ -499,7 +499,7 @@ xinput --list-props "ILITEK Multi-Touch"
 Kiosk flags already suppress most; if it persists, delete `~/.config/chromium/Default/Preferences` between runs, or set `--incognito` (but you lose the PWA install).
 
 **Google sync returns 401.**
-Refresh token likely expired. Re-link the member in Settings → Google.
+Refresh token likely expired. Re-link the member in Settings → Calendars → Google accounts.
 
 **Google sync returns 410 GONE.**
 Sync token expired (Google invalidates after ~1 week of no use). zFamily handles this automatically — next sync falls back to a full re-pull.
