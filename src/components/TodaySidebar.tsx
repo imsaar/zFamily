@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { format } from "date-fns";
 import { useRouter } from "next/navigation";
 import type { Member, MemberColor, EventRow, ChoreCompletion } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 import type { ChoreWithAssignees } from "@/lib/chores";
 import { toggleChoreAction, verifyCompletionAction } from "@/app/actions";
 import { useRequestPin } from "./PinPad";
@@ -81,7 +81,7 @@ export function TodaySidebar({
               <div key={m.id} className="mb-4">
                 <div className="flex items-center gap-2 mb-2">
                   <div className={`w-6 h-6 rounded-full ${color.bg} flex items-center justify-center text-sm text-white`}>
-                    {m.emoji ?? m.name[0]}
+                    {memberGlyph(m)}
                   </div>
                   <div className="font-medium">{m.name}</div>
                   {streak > 0 && (
@@ -152,7 +152,7 @@ export function TodaySidebar({
                                   disabled={pending}
                                   className={`h-10 min-w-14 px-3 rounded-full ${vcol.bg} text-white text-sm flex items-center gap-1.5 active:opacity-80`}
                                 >
-                                  <span>{v.emoji ?? v.name[0]}</span>
+                                  <span>{memberGlyph(v)}</span>
                                   <span>✓</span>
                                 </button>
                               );

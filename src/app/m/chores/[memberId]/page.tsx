@@ -5,7 +5,7 @@ import { listChores, getCompletions, isDueOn, streakFor, eligibleVerifiers } fro
 import { pointsBalance } from "@/lib/rewards";
 import { format } from "date-fns";
 import type { MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 import { MobileChoreList } from "@/components/MobileChoreList";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export default async function MobileChoresForMember({ params }: { params: Promis
           ‹
         </Link>
         <div className={`w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl`}>
-          {member.emoji ?? member.name[0]}
+          {memberGlyph(member)}
         </div>
         <div className="flex-1">
           <div className="text-xl font-semibold">{member.name}</div>

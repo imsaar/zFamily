@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { Member, MemberColor, EventRow, ChoreCompletion, Reward } from "@/lib/types";
-import { COLOR_CLASSES, displayName } from "@/lib/types";
+import { COLOR_CLASSES, displayName, memberGlyph } from "@/lib/types";
 import type { ChoreWithAssignees } from "@/lib/chores";
 import type { Meal, ProposalWithVotes } from "@/lib/meals";
 import { toggleChoreAction, verifyCompletionAction, toggleVoteAction, proposeMealAction } from "@/app/actions";
@@ -66,7 +66,7 @@ export function PersonalHome({
             />
           ) : (
             <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center text-4xl shrink-0">
-              {member.emoji ?? member.name[0]}
+              {memberGlyph(member)}
             </div>
           )}
           <div className="flex-1">
@@ -158,7 +158,7 @@ export function PersonalHome({
                               disabled={pending}
                               className={`h-11 min-w-16 px-4 rounded-full ${vcol.bg} text-white text-base font-medium flex items-center gap-1.5 active:opacity-80`}
                             >
-                              <span>{v.emoji ?? v.name[0]}</span>
+                              <span>{memberGlyph(v)}</span>
                               <span>✓</span>
                             </button>
                           );

@@ -1,4 +1,5 @@
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { SettingsGate } from "@/components/SettingsGate";
 import { listMembers } from "@/lib/members";
 import { listChores } from "@/lib/chores";
 import { listRewards } from "@/lib/rewards";
@@ -13,5 +14,9 @@ export default function SettingsPage() {
   const rewards = listRewards(false);
   const settings = getAllSettings();
   const feeds = listFeeds();
-  return <SettingsPanel members={members} chores={chores} rewards={rewards} settings={settings} feeds={feeds} />;
+  return (
+    <SettingsGate>
+      <SettingsPanel members={members} chores={chores} rewards={rewards} settings={settings} feeds={feeds} />
+    </SettingsGate>
+  );
 }

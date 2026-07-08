@@ -59,6 +59,12 @@ async function requireParentAuth(admin: { by: number; pin?: string | null } | un
 
 export type AdminAuth = { by: number; pin?: string | null };
 
+/** Verify a parent PIN without mutating anything — used to unlock the Settings
+ *  screen. Returns the same shape as the admin gate. */
+export async function verifyAdminAction(admin?: AdminAuth) {
+  return await requireParentAuth(admin);
+}
+
 export async function toggleChoreAction(choreId: number, memberId: number) {
   const today = new Date();
   toggleCompletion(choreId, memberId, today);
@@ -283,9 +289,9 @@ export async function updateSettingAction(key: string, value: string, admin?: Ad
   return { ok: true as const };
 }
 
-export async function createMealAction(input: { name: string; icon?: string | null; notes?: string | null; ingredients: Ingredient[]; slots?: MealSlot[] }, admin?: AdminAuth) {
-  const gate = await requireParentAuth(admin);
-  if (!gate.ok) return gate;
+// Adding a meal to the library is intentionally open — anyone at the kiosk can
+// contribute a meal. Editing/deleting existing meals stays parent-gated.
+export async function createMealAction(input: { name: string; icon?: string | null; notes?: string | null; ingredients: Ingredient[]; slots?: MealSlot[] }) {
   createMeal(input);
   bust();
   return { ok: true as const };
@@ -424,11 +430,20 @@ export async function redeemRewardAction(input: { rewardId: number; memberId: nu
 
 // PIN management
 
-export async function setMemberPinAction(memberId: number, newPin: string, currentPin?: string | null) {
-  if (memberHasPin(memberId)) {
-    if (!currentPin || !verifyMemberPin(memberId, currentPin)) {
-      return { ok: false as const, reason: "pin_invalid" as const };
-    }
+// Changing/removing an EXISTING PIN requires either the member's own current
+// PIN (self-service) or a parent's authorization (so parents can reset a child
+// who forgot theirs). Setting a FIRST PIN (none yet) is open — used by the
+// first-launch setup gate.
+async function pinChangeAllowed(memberId: number, currentPin: string | null | undefined, admin: AdminAuth | undefined): Promise<boolean> {
+  if (!memberHasPin(memberId)) return true;
+  if (currentPin && verifyMemberPin(memberId, currentPin)) return true;
+  if (admin && (await requireParentAuth(admin)).ok) return true;
+  return false;
+}
+
+export async function setMemberPinAction(memberId: number, newPin: string, currentPin?: string | null, admin?: AdminAuth) {
+  if (!(await pinChangeAllowed(memberId, currentPin, admin))) {
+    return { ok: false as const, reason: "pin_invalid" as const };
   }
   const result = setMemberPin(memberId, newPin);
   bust();
@@ -440,8 +455,8 @@ export async function searchCityAction(query: string) {
   return { results };
 }
 
-export async function clearMemberPinAction(memberId: number, currentPin: string) {
-  if (memberHasPin(memberId) && !verifyMemberPin(memberId, currentPin)) {
+export async function clearMemberPinAction(memberId: number, currentPin?: string | null, admin?: AdminAuth) {
+  if (!(await pinChangeAllowed(memberId, currentPin, admin))) {
     return { ok: false as const, reason: "pin_invalid" as const };
   }
   clearMemberPin(memberId);

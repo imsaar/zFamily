@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Member, MemberColor, MemberRole } from "@/lib/types";
-import { COLOR_CLASSES, MEMBER_COLORS } from "@/lib/types";
+import { COLOR_CLASSES, MEMBER_COLORS, memberGlyph, displayName } from "@/lib/types";
 import type { ChoreWithAssignees } from "@/lib/chores";
 import type { Reward } from "@/lib/types";
 import {
@@ -31,7 +31,7 @@ import {
 import type { GeocodeResult } from "@/lib/geocode";
 import type { IcalFeed } from "@/lib/ical";
 import { Sheet } from "./Sheet";
-import { useAdminAuth } from "./AdminGate";
+import { useSettingsAuth } from "./SettingsAuth";
 import { PinPadModal } from "./PinPad";
 import { MemberAvatar } from "./MemberAvatar";
 import { IconPicker } from "./IconPicker";
@@ -95,7 +95,7 @@ function MembersTab({ members }: { members: Member[] }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<Member | "new" | null>(null);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
 
   return (
     <div className="max-w-3xl">
@@ -166,8 +166,8 @@ function MembersTab({ members }: { members: Member[] }) {
 function MemberEditor({ member, onClose }: { member: Member | null; onClose: () => void }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const { authenticate, modal } = useAdminAuth();
-  const [pinPad, setPinPad] = useState<null | "set" | "clear">(null);
+  const { authenticate, modal } = useSettingsAuth();
+  const [showSetPin, setShowSetPin] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [name, setName] = useState(member?.name ?? "");
   const [nickname, setNickname] = useState(member?.nickname ?? "");
@@ -191,6 +191,16 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
     } finally {
       setPending(false);
     }
+  };
+
+  // Parents can remove any member's PIN (e.g. a child who forgot theirs) — the
+  // Settings screen is already parent-authorized, so no child PIN is needed.
+  const removePin = async () => {
+    if (!member) return;
+    if (!confirm(`Remove ${displayName(member)}'s PIN?`)) return;
+    setPinError(null);
+    const ok = await authenticate((auth) => clearMemberPinAction(member.id, null, auth));
+    if (ok) router.refresh();
   };
 
   return (
@@ -260,14 +270,14 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
                 )}
               </div>
               <button
-                onClick={() => { setPinError(null); setPinPad("set"); }}
+                onClick={() => { setPinError(null); setShowSetPin(true); }}
                 className="px-4 py-2 rounded-xl border-2 border-zinc-300 text-sm"
               >
                 {member.pin_hash ? "Change PIN" : "Set PIN"}
               </button>
               {member.pin_hash && (
                 <button
-                  onClick={() => { setPinError(null); setPinPad("clear"); }}
+                  onClick={removePin}
                   className="px-4 py-2 rounded-xl text-red-600 text-sm"
                 >
                   Remove
@@ -276,6 +286,7 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
             </div>
             <p className="text-xs text-zinc-500 mt-2">
               Required for personal actions (verify, vote, redeem) and — for parents — admin actions.
+              As a parent you can set or reset this PIN here without knowing the current one.
             </p>
           </div>
         )}
@@ -307,17 +318,16 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
           </button>
         </div>
       </div>
-      {member && pinPad && (
+      {member && showSetPin && (
         <MemberPinManager
           member={member}
-          mode={pinPad}
           error={pinError}
           onError={setPinError}
           onDone={() => {
-            setPinPad(null);
+            setShowSetPin(false);
             router.refresh();
           }}
-          onCancel={() => setPinPad(null)}
+          onCancel={() => setShowSetPin(false)}
         />
       )}
       {modal}
@@ -327,7 +337,7 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
 
 function PhotoUploader({ member }: { member: Member }) {
   const router = useRouter();
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -390,40 +400,27 @@ function PhotoUploader({ member }: { member: Member }) {
   );
 }
 
+// Set or change a member's PIN. Only rendered inside the parent-gated Settings
+// screen, so the acting parent's authorization (from useSettingsAuth) is used —
+// no need to know the member's current PIN. Just choose the new PIN twice.
 function MemberPinManager({
   member,
-  mode,
   error,
   onError,
   onDone,
   onCancel,
 }: {
   member: Member;
-  mode: "set" | "clear";
   error: string | null;
   onError: (e: string | null) => void;
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [phase, setPhase] = useState<"current" | "new" | "confirm">(
-    member.pin_hash ? "current" : "new"
-  );
-  const [currentPin, setCurrentPin] = useState<string | null>(null);
+  const { authenticate } = useSettingsAuth();
+  const [phase, setPhase] = useState<"new" | "confirm">("new");
   const [newPin, setNewPin] = useState<string | null>(null);
 
   const onSubmit = async (pin: string) => {
-    if (phase === "current") {
-      if (mode === "clear") {
-        const r = await clearMemberPinAction(member.id, pin);
-        if (!r.ok) return onError(r.reason ?? "pin_invalid");
-        onError(null);
-        onDone();
-        return;
-      }
-      setCurrentPin(pin);
-      setPhase("new");
-      return;
-    }
     if (phase === "new") {
       setNewPin(pin);
       setPhase("confirm");
@@ -436,15 +433,14 @@ function MemberPinManager({
       setNewPin(null);
       return;
     }
-    const r = await setMemberPinAction(member.id, pin, currentPin);
-    if (!r.ok) return onError(r.reason ?? "pin_invalid");
+    const ok = await authenticate((auth) => setMemberPinAction(member.id, pin, null, auth));
+    if (!ok) return onError("pin_invalid");
     onError(null);
     onDone();
   };
 
   const purposeText: Record<typeof phase, string> = {
-    current: mode === "clear" ? "Confirm current PIN to remove it" : "Enter current PIN",
-    new: mode === "clear" ? "Confirm to remove" : "Choose a new 4-digit PIN",
+    new: member.pin_hash ? "Choose a new 4-digit PIN" : "Choose a 4-digit PIN",
     confirm: "Re-enter new PIN to confirm",
   };
 
@@ -479,7 +475,7 @@ function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members:
   const [editing, setEditing] = useState<ChoreWithAssignees | "new" | null>(null);
   const [seed, setSeed] = useState<ChoreTemplate | null>(null);
   const [browsing, setBrowsing] = useState(false);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
 
   return (
     <div className="max-w-4xl">
@@ -622,7 +618,7 @@ function ChoreEditor({
 }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
   const [title, setTitle] = useState(chore?.title ?? template?.title ?? "");
   const [icon, setIcon] = useState(chore?.icon ?? template?.icon ?? "📋");
   const [points, setPoints] = useState(chore?.points ?? template?.points ?? 1);
@@ -712,7 +708,7 @@ function ChoreEditor({
                     selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200"
                   }`}
                 >
-                  <span>{m.emoji ?? m.name[0]}</span>
+                  <span>{memberGlyph(m)}</span>
                   <span>{m.name}</span>
                 </button>
               );
@@ -739,7 +735,7 @@ function RewardsTab({ rewards }: { rewards: Reward[] }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<Reward | "new" | null>(null);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
 
   return (
     <div className="max-w-3xl">
@@ -798,7 +794,7 @@ function RewardsTab({ rewards }: { rewards: Reward[] }) {
 function RewardEditor({ reward, onClose }: { reward: Reward | null; onClose: () => void }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
   const [title, setTitle] = useState(reward?.title ?? "");
   const [icon, setIcon] = useState(reward?.icon ?? "🎁");
   const [description, setDescription] = useState(reward?.description ?? "");
@@ -866,7 +862,7 @@ function RewardEditor({ reward, onClose }: { reward: Reward | null; onClose: () 
 function WeatherTab({ settings }: { settings: Record<string, string> }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
   const [label, setLabel] = useState(settings.weather_label ?? "");
   const [lat, setLat] = useState(settings.weather_lat ?? "");
   const [lon, setLon] = useState(settings.weather_lon ?? "");
@@ -1017,7 +1013,7 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [saved, setSaved] = useState(false);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
   const [quietStart, setQuietStart] = useState(settings.quiet_start ?? "21:00");
   const [quietEnd, setQuietEnd] = useState(settings.quiet_end ?? "07:00");
   const [resetHour, setResetHour] = useState(settings.chore_reset_hour ?? "4");
@@ -1189,7 +1185,7 @@ function CalendarsTab({ feeds, members }: { feeds: IcalFeed[]; members: Member[]
   const [pending, setPending] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [editing, setEditing] = useState<IcalFeed | "new" | null>(null);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
 
   const syncAll = async () => {
     setSyncing(true);
@@ -1288,7 +1284,7 @@ function FeedEditor({ feed, members, onClose }: { feed: IcalFeed | null; members
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
   const [name, setName] = useState(feed?.name ?? "");
   const [url, setUrl] = useState(feed?.url ?? "");
   const [memberId, setMemberId] = useState<number | null>(feed?.member_id ?? null);
@@ -1391,7 +1387,7 @@ function syncStatus(f: IcalFeed): string {
 
 function AdvancedTab() {
   const router = useRouter();
-  const { authenticate, modal } = useAdminAuth();
+  const { authenticate, modal } = useSettingsAuth();
   const [pending, setPending] = useState(false);
 
   const reset = async () => {

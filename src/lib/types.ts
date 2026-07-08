@@ -57,6 +57,12 @@ export function displayName(m: { name: string; nickname?: string | null }): stri
   return m.nickname?.trim() || m.name;
 }
 
+/** The glyph to show for a member when there's no headshot photo: their chosen
+ *  icon (emoji) if set, otherwise a neutral person icon — never a bare initial. */
+export function memberGlyph(m: { emoji?: string | null }): string {
+  return m.emoji?.trim() || "👤";
+}
+
 export type EventRow = {
   id: string;
   member_id: number | null;

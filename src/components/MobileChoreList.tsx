@@ -6,7 +6,7 @@ import { toggleChoreAction, verifyCompletionAction } from "@/app/actions";
 import { useRequestPin } from "./PinPad";
 import type { ChoreWithAssignees } from "@/lib/chores";
 import type { ChoreCompletion, Member } from "@/lib/types";
-import { COLOR_CLASSES, type MemberColor } from "@/lib/types";
+import { COLOR_CLASSES, type MemberColor, memberGlyph } from "@/lib/types";
 
 export function MobileChoreList({
   memberId,
@@ -106,7 +106,7 @@ export function MobileChoreList({
                       disabled={pending}
                       className={`h-12 min-w-16 px-4 rounded-full ${vcol.bg} text-white text-base font-medium flex items-center gap-1.5 active:opacity-80`}
                     >
-                      <span>{v.emoji ?? v.name[0]}</span>
+                      <span>{memberGlyph(v)}</span>
                       <span>✓</span>
                     </button>
                   );
