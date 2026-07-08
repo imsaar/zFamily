@@ -6,7 +6,7 @@ import { format, addHours, setHours, setMinutes } from "date-fns";
 import { Sheet } from "./Sheet";
 import { createEventAction } from "@/app/actions";
 import type { Member, MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
 export function QuickAddSheet({
   day,
@@ -73,7 +73,7 @@ export function QuickAddSheet({
                     selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200 text-zinc-700"
                   }`}
                 >
-                  <span>{m.emoji ?? m.name[0]}</span>
+                  <span>{memberGlyph(m)}</span>
                   <span>{m.name}</span>
                 </button>
               );

@@ -6,7 +6,7 @@ import { format } from "date-fns";
 import { Sheet } from "./Sheet";
 import { deleteEventAction, updateEventAction } from "@/app/actions";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
 export function EventDetailSheet({
   event,
@@ -167,7 +167,7 @@ function MemberPill({ member }: { member: Member | undefined }) {
   const color = COLOR_CLASSES[member.color as MemberColor] ?? COLOR_CLASSES.sky;
   return (
     <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${color.bgSoft} ${color.text}`}>
-      <span>{member.emoji ?? member.name[0]}</span>
+      <span>{memberGlyph(member)}</span>
       <span>{member.name}</span>
     </div>
   );

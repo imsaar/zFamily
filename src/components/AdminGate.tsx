@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import { useParents } from "./PinProviders";
 import { usePinAuth, PinPadModal } from "./PinPad";
 import type { Member, MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
 export type AdminAuth = { by: number; pin: string };
 
@@ -157,7 +157,7 @@ function ParentPicker({
                 className={`w-full flex items-center gap-4 p-4 rounded-2xl border-2 ${color.border} bg-white active:bg-zinc-50`}
               >
                 <div className={`w-14 h-14 rounded-full ${color.bg} flex items-center justify-center text-2xl text-white shrink-0`}>
-                  {p.emoji ?? p.name[0]}
+                  {memberGlyph(p)}
                 </div>
                 <div className="flex-1 text-left">
                   <div className="text-lg font-semibold">{p.name}</div>

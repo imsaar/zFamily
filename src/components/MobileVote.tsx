@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Meal, ProposalWithVotes } from "@/lib/meals";
 import type { Member, MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 import {
   applyWinnersAction,
   proposeMealAction,
@@ -156,7 +156,7 @@ function MobileProposalCard({
                 voted ? `${color.bg} text-white` : `${color.bgSoft} ${color.text} opacity-50 grayscale`
               }`}
             >
-              <div className="text-xl">{m.emoji ?? m.name[0]}</div>
+              <div className="text-xl">{memberGlyph(m)}</div>
               <div className="text-[10px]">{m.name}</div>
             </button>
           );

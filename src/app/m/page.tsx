@@ -5,7 +5,7 @@ import { listChores, getCompletions, isDueOn } from "@/lib/chores";
 import { listShoppingItems } from "@/lib/meals";
 import { format } from "date-fns";
 import type { MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +52,7 @@ export default function MobileHome() {
                 className="bg-white border border-zinc-200 rounded-2xl p-4 flex items-center gap-3"
               >
                 <div className={`w-12 h-12 rounded-full ${color.bg} flex items-center justify-center text-2xl text-white shrink-0`}>
-                  {member.emoji ?? member.name[0]}
+                  {memberGlyph(member)}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold truncate">{member.name}</div>

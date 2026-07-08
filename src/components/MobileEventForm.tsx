@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { createEventAction } from "@/app/actions";
 import type { Member, MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
 export function MobileEventForm({ members }: { members: Member[] }) {
   const router = useRouter();
@@ -62,7 +62,7 @@ export function MobileEventForm({ members }: { members: Member[] }) {
                   selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200 bg-white text-zinc-700"
                 }`}
               >
-                <span>{m.emoji ?? m.name[0]}</span>
+                <span>{memberGlyph(m)}</span>
                 <span>{m.name}</span>
               </button>
             );

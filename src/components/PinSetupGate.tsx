@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Member, MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 import { PinPadModal } from "./PinPad";
 import { setMemberPinAction } from "@/app/actions";
 
@@ -100,7 +100,7 @@ export function PinSetupGate({
               }`}
             >
               <div className={`w-20 h-20 rounded-full ${color.bg} flex items-center justify-center text-4xl text-white`}>
-                {p.emoji ?? p.name[0]}
+                {memberGlyph(p)}
               </div>
               <div className="text-lg font-semibold">{p.name}</div>
               <div className="text-xs text-zinc-500">Needs PIN</div>

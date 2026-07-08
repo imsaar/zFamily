@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { format, addWeeks, isToday } from "date-fns";
 import type { Meal, MealSlot, PlanEntry, ShoppingItem, Ingredient, ProposalWithVotes } from "@/lib/meals";
 import type { Member, MemberColor } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 import { Sheet } from "./Sheet";
 import {
   planAndShopAction,
@@ -865,7 +865,7 @@ function ProposalRow({
                   : `${color.bgSoft} ${color.text} opacity-50 grayscale`
               }`}
             >
-              {m.emoji ?? m.name[0]}
+              {memberGlyph(m)}
             </button>
           );
         })}
@@ -986,9 +986,10 @@ function MealEditor({ meal, onClose }: { meal: Meal | null; onClose: () => void 
     setPending(true);
     try {
       const data = { name: name.trim(), icon: icon || null, notes: notes || null, ingredients: cleaned, slots: ALL_SLOTS.filter((s) => slots.has(s)) };
-      const ok = await authenticate((auth) =>
-        meal ? updateMealAction(meal.id, data, auth) : createMealAction(data, auth)
-      );
+      // Adding a new meal is open to anyone; editing an existing one is gated.
+      const ok = meal
+        ? await authenticate((auth) => updateMealAction(meal.id, data, auth))
+        : (await createMealAction(data)).ok;
       if (ok) {
         router.refresh();
         onClose();

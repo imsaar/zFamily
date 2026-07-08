@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { Member, MemberColor, ChoreCompletion, Reward } from "@/lib/types";
-import { COLOR_CLASSES, displayName } from "@/lib/types";
+import { COLOR_CLASSES, displayName, memberGlyph } from "@/lib/types";
 import type { ChoreWithAssignees } from "@/lib/chores";
 import {
   toggleChoreAction,
@@ -112,7 +112,7 @@ export function ChoreBoard({
                       />
                     ) : (
                       <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl">
-                        {m.emoji ?? m.name[0]}
+                        {memberGlyph(m)}
                       </div>
                     )}
                     <div>
@@ -308,7 +308,7 @@ function PinVerifyPill({
       disabled={disabled || busy}
       className={`h-11 min-w-16 px-4 rounded-full ${vcol.bg} text-white text-base font-medium flex items-center gap-1.5 active:opacity-80`}
     >
-      <span>{verifier.emoji ?? verifier.name[0]}</span>
+      <span>{memberGlyph(verifier)}</span>
       <span>✓</span>
     </button>
   );
@@ -445,7 +445,7 @@ function RewardsShelf({
                     selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200"
                   }`}
                 >
-                  <span>{c.emoji ?? c.name[0]}</span>
+                  <span>{memberGlyph(c)}</span>
                   <span>{c.name}</span>
                   <span className={`text-xs px-1.5 py-0.5 rounded ${selected ? "bg-white/20" : "bg-amber-100 text-amber-700"} tabular-nums`}>
                     🏆 {balances.get(c.id) ?? 0}
