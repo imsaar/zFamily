@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { format, isSameDay, addWeeks, isToday } from "date-fns";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGradient } from "@/lib/types";
+
+// Participant colors for an event (empty → default sky).
+function eventColors(e: EventRow, memberById: Map<number, Member>): MemberColor[] {
+  const ids = e.member_ids ?? (e.member_id != null ? [e.member_id] : []);
+  return ids.map((id) => memberById.get(id)?.color as MemberColor).filter(Boolean);
+}
 import { QuickAddSheet } from "./QuickAddSheet";
 import { EventDetailSheet } from "./EventDetailSheet";
 
@@ -100,13 +106,15 @@ export function WeekView({
           return (
             <div key={key} className="border-l border-zinc-200 p-1 flex flex-col gap-1">
               {ev.map((e) => {
-                const m = e.member_id ? memberById.get(e.member_id) : null;
-                const color = m ? COLOR_CLASSES[m.color as MemberColor] : COLOR_CLASSES.sky;
+                const cols = eventColors(e, memberById);
+                const multi = cols.length >= 2;
+                const single = COLOR_CLASSES[cols[0] ?? "sky"] ?? COLOR_CLASSES.sky;
                 return (
                   <button
                     key={e.id}
                     onClick={() => setOpenEvent(e)}
-                    className={`text-left text-sm px-2 py-1 rounded ${color.bgSoft} ${color.text} truncate`}
+                    style={multi ? { background: memberGradient(cols) } : undefined}
+                    className={`text-left text-sm px-2 py-1 rounded truncate ${multi ? "text-white" : `${single.bgSoft} ${single.text}`}`}
                   >
                     {e.title}
                   </button>
@@ -174,20 +182,23 @@ export function WeekView({
                   if (startHour >= DAY_END || endHour <= DAY_START) return null;
                   const top = Math.max(0, (startHour - DAY_START) * HOUR_HEIGHT);
                   const height = Math.max(28, (endHour - Math.max(DAY_START, startHour)) * HOUR_HEIGHT);
-                  const m = e.member_id ? memberById.get(e.member_id) : null;
-                  const color = m ? COLOR_CLASSES[m.color as MemberColor] : COLOR_CLASSES.sky;
+                  const cols = eventColors(e, memberById);
+                  const multi = cols.length >= 2;
+                  const single = COLOR_CLASSES[cols[0] ?? "sky"] ?? COLOR_CLASSES.sky;
                   return (
                     <button
                       key={e.id}
                       onClick={() => setOpenEvent(e)}
-                      className={`absolute left-1 right-1 rounded-md ${color.bgSoft} border-l-4 ${color.border} p-2 text-left overflow-hidden text-sm leading-tight`}
-                      style={{ top, height }}
+                      className={`absolute left-1 right-1 rounded-md p-2 text-left overflow-hidden text-sm leading-tight ${
+                        multi ? "text-white shadow-sm" : `${single.bgSoft} border-l-4 ${single.border}`
+                      }`}
+                      style={multi ? { top, height, background: memberGradient(cols) } : { top, height }}
                     >
-                      <div className={`font-medium ${color.text} truncate`}>{e.title}</div>
-                      <div className="text-xs text-zinc-500 tabular-nums">
+                      <div className={`font-medium truncate ${multi ? "text-white" : single.text}`}>{e.title}</div>
+                      <div className={`text-xs tabular-nums ${multi ? "text-white/80" : "text-zinc-500"}`}>
                         {format(start, "h:mm a")} – {format(end, "h:mm a")}
                       </div>
-                      {e.location && <div className="text-xs text-zinc-500 truncate">📍 {e.location}</div>}
+                      {e.location && <div className={`text-xs truncate ${multi ? "text-white/80" : "text-zinc-500"}`}>📍 {e.location}</div>}
                     </button>
                   );
                 })}

@@ -1,26 +1,50 @@
 import { db } from "./db";
 import type { EventRow } from "./types";
 
+// Attach `member_ids` (all participants) to event rows. Falls back to the
+// single `member_id` when there are no join rows (e.g. Google-synced events).
+function withMembers(rows: EventRow[]): EventRow[] {
+  if (rows.length === 0) return rows;
+  const ids = rows.map((r) => r.id);
+  const links = db()
+    .prepare(`SELECT event_id, member_id FROM event_members WHERE event_id IN (${ids.map(() => "?").join(",")})`)
+    .all(...ids) as Array<{ event_id: string; member_id: number }>;
+  const byEvent = new Map<string, number[]>();
+  for (const l of links) {
+    if (!byEvent.has(l.event_id)) byEvent.set(l.event_id, []);
+    byEvent.get(l.event_id)!.push(l.member_id);
+  }
+  for (const r of rows) {
+    const list = byEvent.get(r.id);
+    r.member_ids = list && list.length ? list : r.member_id != null ? [r.member_id] : [];
+  }
+  return rows;
+}
+
 export function listEventsInRange(startTs: number, endTs: number): EventRow[] {
-  return db()
+  const rows = db()
     .prepare(
       `SELECT * FROM events
        WHERE start_ts < ? AND end_ts > ?
        ORDER BY start_ts ASC`
     )
     .all(endTs, startTs) as EventRow[];
+  return withMembers(rows);
 }
 
 export function getEvent(id: string): EventRow | undefined {
-  return db().prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
+  const row = db().prepare("SELECT * FROM events WHERE id = ?").get(id) as EventRow | undefined;
+  return row ? withMembers([row])[0] : undefined;
 }
 
-export function upsertEvent(e: Omit<EventRow, "updated_at"> & { updated_at?: number }) {
+export function upsertEvent(e: Omit<EventRow, "updated_at" | "member_ids"> & { updated_at?: number; member_ids?: number[] }) {
   const now = e.updated_at ?? Math.floor(Date.now() / 1000);
+  // If participants are provided, the primary member_id is the first of them.
+  const primary = e.member_ids !== undefined ? (e.member_ids[0] ?? null) : e.member_id;
   db()
     .prepare(
-      `INSERT INTO events (id, member_id, calendar_id, title, start_ts, end_ts, all_day, location, notes, rrule, etag, source, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO events (id, member_id, calendar_id, title, start_ts, end_ts, all_day, location, address, notes, rrule, etag, source, commute_seconds, commute_mode, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          member_id=excluded.member_id,
          calendar_id=excluded.calendar_id,
@@ -29,27 +53,40 @@ export function upsertEvent(e: Omit<EventRow, "updated_at"> & { updated_at?: num
          end_ts=excluded.end_ts,
          all_day=excluded.all_day,
          location=excluded.location,
+         address=excluded.address,
          notes=excluded.notes,
          rrule=excluded.rrule,
          etag=excluded.etag,
          source=excluded.source,
+         commute_seconds=excluded.commute_seconds,
+         commute_mode=excluded.commute_mode,
          updated_at=excluded.updated_at`
     )
     .run(
       e.id,
-      e.member_id,
+      primary,
       e.calendar_id,
       e.title,
       e.start_ts,
       e.end_ts,
       e.all_day,
       e.location,
+      e.address,
       e.notes,
       e.rrule,
       e.etag,
       e.source,
+      e.commute_seconds ?? null,
+      e.commute_mode ?? null,
       now
     );
+  // Rewrite the participants join only when the caller manages it (member_ids
+  // provided). Google sync omits it and keeps the single member_id.
+  if (e.member_ids !== undefined) {
+    db().prepare("DELETE FROM event_members WHERE event_id = ?").run(e.id);
+    const ins = db().prepare("INSERT OR IGNORE INTO event_members (event_id, member_id) VALUES (?, ?)");
+    for (const m of e.member_ids) ins.run(e.id, m);
+  }
 }
 
 export function deleteEvent(id: string) {
@@ -57,17 +94,20 @@ export function deleteEvent(id: string) {
 }
 
 export function createLocalEvent(input: {
-  member_id: number | null;
+  member_ids: number[];
   title: string;
   start_ts: number;
   end_ts: number;
   all_day?: boolean;
   location?: string;
+  address?: string | null;
   notes?: string;
   recurrence?: "none" | "daily" | "weekdays" | "weekly" | "monthly" | null;
   // For weekly/monthly: repeat every N weeks/months. The weekday (weekly) and
   // day-of-month (monthly) come from the event's start date.
   interval?: number;
+  commute_seconds?: number | null;
+  commute_mode?: string | null;
 }): string {
   const id = `local-${crypto.randomUUID()}`;
   const iv = Math.max(1, Math.round(input.interval ?? 1));
@@ -82,17 +122,21 @@ export function createLocalEvent(input: {
   }
   upsertEvent({
     id,
-    member_id: input.member_id,
+    member_id: input.member_ids[0] ?? null,
+    member_ids: input.member_ids,
     calendar_id: "local",
     title: input.title,
     start_ts: input.start_ts,
     end_ts: input.end_ts,
     all_day: input.all_day ? 1 : 0,
     location: input.location ?? null,
+    address: input.address ?? null,
     notes: input.notes ?? null,
     rrule,
     etag: null,
     source: "local",
+    commute_seconds: input.commute_seconds ?? null,
+    commute_mode: input.commute_mode ?? null,
   });
   return id;
 }

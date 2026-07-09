@@ -29,7 +29,8 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 ## What's in the box
 
 - **Family home dashboard** with Quranic verse of the day (Arabic + English translation, deterministic per date), Hijri (Umm al-Qura) date with moon-sighting correction, weekly overview, today's breakfast/lunch/dinner panel, and quick tiles.
-- **Weekly + monthly calendar** with per-member color coding, all-day strip, hourly grid, red "now" line.
+- **Weekly + monthly calendar** with per-member color coding, all-day strip, hourly grid, red "now" line. Events support **multiple participants** (with All / Clear quick-select) and render as a **gradient of their colors** in one consolidated block. Editing/deleting an event is parent-PIN gated.
+- **Event location + commute** — give an event a location (type a name and **look up** the full address via OpenStreetMap); the app then estimates the **commute time from home** (🚗 car via OSRM, or 🚌 bus as a distance-based estimate) and shows it in the event details and Today's schedule. Set your **home address** in Settings → Display (it's also used as the weather location).
 - **Recurring events** — locally-created events support daily, weekdays, weekly, monthly, or quarterly recurrence (client-expanded from RRULE).
 - **Chore board** with pending → verified two-step (parents verify children; parents peer-verify each other), big touch check-off circles, daily/weekly/weekend recurrence, points, streaks (🔥), weekly progress bars. A **chore library** of common household chores (empty the dishwasher, take garbage to curb every Sunday, clean the kitchen…) pre-fills the editor so you just assign who does it. **Common chores** can be marked doable-by-anyone — the first person to do it completes it for everyone that period, and you pick who did it.
 - **Gamification** — every verified chore earns points; parent-approved rewards shelf lets kids spend points on real rewards.
@@ -327,6 +328,8 @@ Personal-scope OAuth apps in Google Cloud stay in "testing" mode indefinitely un
 | Chore reset hour | Display | 4 (04:00) | Daily chores reset at this hour local |
 | Hijri offset (moon-sighting) | Display | 0 | Shift Islamic (Umm al-Qura) date by ±3 days |
 | On-screen keyboard | Display | Off | Show a touch QWERTY (via a ⌨️ button) when a text field is focused — for kiosks with no physical keyboard |
+| Home address | Display | none | Origin for event commute estimates; also sets the weather location (geocoded via OpenStreetMap Nominatim) |
+| Commute by | Display | Car | Car (OSRM driving) or Bus (rough distance-based estimate) for event commute times |
 | Member PIN | Family | not set | 4-digit numeric — required for personal + admin actions |
 | Member role | Family | parent | Parent or child; determines verify rules and access to admin |
 | Member nickname | Family | none | Optional friendly name shown around the app in place of the given name |
@@ -356,7 +359,8 @@ Everything lives in **one SQLite file**: `${ZFAMILY_DATA_DIR}/zfamily.db`.
 Tables:
 
 - `members` — family members + role + PIN hash/salt + Google credentials
-- `events` — cached calendar events (Google or local, with optional RRULE)
+- `events` — cached calendar events (Google or local, with optional RRULE, location/address + cached commute)
+- `event_members` — participants join (an event can have several members)
 - `chores`, `chore_assignees` — chore definitions
 - `chore_completions` — daily check-off log with verified_at/verified_by
 - `meals` — meal library with JSON ingredients + is_favorite flag

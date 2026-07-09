@@ -9,7 +9,8 @@ import { exportAllData, importAllData, saveBackupToDisk, listBackups, readStored
 import { checkForUpdate, runUpdate, restartApp } from "@/lib/updater";
 import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
-import { setSetting } from "@/lib/settings";
+import { setSetting, getSetting } from "@/lib/settings";
+import { computeCommute, geocodeAddress, searchAddresses, type CommuteMode } from "@/lib/commute";
 import { requirePin, setMemberPin, clearMemberPin, memberHasPin, verifyMemberPin } from "@/lib/pins";
 import { searchCity } from "@/lib/geocode";
 import { resetWeatherCache } from "@/lib/weather";
@@ -86,17 +87,21 @@ export async function uncompleteSharedChoreAction(choreId: number) {
 }
 
 export async function createEventAction(input: {
-  member_id: number | null;
+  member_ids: number[];
   title: string;
   start_ts: number;
   end_ts: number;
   all_day?: boolean;
   location?: string;
+  address?: string | null;
   notes?: string;
   recurrence?: "none" | "daily" | "weekdays" | "weekly" | "monthly" | null;
   interval?: number;
 }) {
-  createLocalEvent(input);
+  const mode: CommuteMode = getSetting("commute_mode") === "bus" ? "bus" : "car";
+  const geoTarget = input.address?.trim() || input.location?.trim() || "";
+  const commute_seconds = geoTarget ? await computeCommute(geoTarget, mode) : null;
+  createLocalEvent({ ...input, commute_seconds, commute_mode: geoTarget ? mode : null });
   bust();
 }
 
@@ -104,7 +109,7 @@ export async function createEventAction(input: {
 // virtual id ("<baseId>::<ts>"); operate on the underlying base event.
 export async function updateEventAction(
   id: string,
-  patch: { title?: string; start_ts?: number; end_ts?: number; member_id?: number | null; location?: string | null; notes?: string | null },
+  patch: { title?: string; start_ts?: number; end_ts?: number; member_ids?: number[]; location?: string | null; address?: string | null; notes?: string | null },
   admin?: AdminAuth
 ) {
   const gate = await requireParentAuth(admin);
@@ -112,14 +117,33 @@ export async function updateEventAction(
   const baseId = id.split("::")[0];
   const existing = getEvent(baseId);
   if (!existing) return { ok: false as const, reason: "not_found" as const };
+  const location = patch.location !== undefined ? patch.location : existing.location;
+  const address = patch.address !== undefined ? patch.address : existing.address;
+  // Recompute the commute when the location or address changed.
+  const mode: CommuteMode = getSetting("commute_mode") === "bus" ? "bus" : "car";
+  let commute_seconds = existing.commute_seconds ?? null;
+  let commute_mode = existing.commute_mode ?? null;
+  if (patch.location !== undefined || patch.address !== undefined) {
+    const geoTarget = address?.trim() || location?.trim() || "";
+    if (geoTarget) {
+      commute_seconds = await computeCommute(geoTarget, mode);
+      commute_mode = mode;
+    } else {
+      commute_seconds = null;
+      commute_mode = null;
+    }
+  }
   upsertEvent({
     ...existing,
     title: patch.title ?? existing.title,
     start_ts: patch.start_ts ?? existing.start_ts,
     end_ts: patch.end_ts ?? existing.end_ts,
-    member_id: patch.member_id !== undefined ? patch.member_id : existing.member_id,
-    location: patch.location !== undefined ? patch.location : existing.location,
+    member_ids: patch.member_ids !== undefined ? patch.member_ids : existing.member_ids,
+    location,
+    address,
     notes: patch.notes !== undefined ? patch.notes : existing.notes,
+    commute_seconds,
+    commute_mode,
   });
   bust();
   return { ok: true as const };
@@ -546,6 +570,41 @@ export async function setMemberPinAction(memberId: number, newPin: string, curre
 export async function searchCityAction(query: string) {
   const results = await searchCity(query);
   return { results };
+}
+
+// Look up a typed place/address name → candidate addresses (for the event
+// location and home-address fields).
+export async function searchAddressAction(query: string) {
+  const results = await searchAddresses(query);
+  return { results: results.map((r) => ({ display: r.display })) };
+}
+
+// Set (or clear) the home address used as the commute origin; geocoded to
+// coordinates on save. Parent-gated.
+export async function setHomeAddressAction(address: string, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  const a = address.trim();
+  if (!a) {
+    setSetting("home_address", "");
+    setSetting("home_lat", "");
+    setSetting("home_lon", "");
+    bust();
+    return { ok: true as const, cleared: true };
+  }
+  const geo = await geocodeAddress(a);
+  if (!geo) return { ok: false as const, reason: "not_found" as const };
+  setSetting("home_address", a);
+  setSetting("home_lat", String(geo.lat));
+  setSetting("home_lon", String(geo.lon));
+  // Use the home location for weather too (label from the first address part;
+  // timezone falls back to "auto" in the weather fetch if unset).
+  setSetting("weather_lat", String(geo.lat));
+  setSetting("weather_lon", String(geo.lon));
+  setSetting("weather_label", a.split(",")[0].trim() || a);
+  resetWeatherCache();
+  bust();
+  return { ok: true as const, resolved: geo.display };
 }
 
 export async function clearMemberPinAction(memberId: number, currentPin?: string | null, admin?: AdminAuth) {

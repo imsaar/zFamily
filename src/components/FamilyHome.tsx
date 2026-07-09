@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { format, isToday } from "date-fns";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
-import { COLOR_CLASSES, displayName } from "@/lib/types";
+import { COLOR_CLASSES, displayName, memberGlyph, memberGradient } from "@/lib/types";
 import { MemberAvatar } from "./MemberAvatar";
+import { commuteLabel } from "./EventDetailSheet";
 import type { Verse } from "@/lib/verses";
 import type { Meal, MealSlot } from "@/lib/meals";
 import type { WeatherSnapshot } from "@/lib/weather";
@@ -165,16 +166,37 @@ export function FamilyHome({
           ) : (
             <ul className="space-y-2">
               {todayEvents.slice(0, 5).map((e) => {
-                const m = e.member_id ? memberById.get(e.member_id) : null;
-                const color = m ? COLOR_CLASSES[m.color as MemberColor] : COLOR_CLASSES.sky;
+                const ids = e.member_ids ?? (e.member_id != null ? [e.member_id] : []);
+                const parts = ids.map((id) => memberById.get(id)).filter((m): m is Member => !!m);
+                const cols = parts.map((m) => m.color as MemberColor);
                 return (
-                  <li key={e.id} className={`bg-white rounded-xl border-l-4 ${color.border} border-y border-r border-zinc-200 px-4 py-3 flex items-center gap-3`}>
-                    <div className="text-sm text-zinc-500 tabular-nums w-24 shrink-0">
-                      {e.all_day ? "All day" : format(new Date(e.start_ts * 1000), "h:mm a")}
+                  <li key={e.id} className="bg-white rounded-xl border border-zinc-200 pr-4 py-3 pl-3 flex items-center gap-3 overflow-hidden">
+                    <div className="w-1.5 self-stretch -my-3 rounded-full shrink-0" style={{ background: memberGradient(cols) }} />
+                    <div className="text-sm text-zinc-500 tabular-nums w-28 shrink-0 leading-tight">
+                      {e.all_day ? (
+                        "All day"
+                      ) : (
+                        <>
+                          <div>{format(new Date(e.start_ts * 1000), "h:mm a")}</div>
+                          <div className="text-zinc-400">– {format(new Date(e.end_ts * 1000), "h:mm a")}</div>
+                        </>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{e.title}</div>
-                      {m && <div className={`text-sm ${color.text}`}>{m.name}</div>}
+                      {parts.length > 0 && (
+                        <div className="text-sm text-zinc-500 truncate">
+                          {parts.map((m) => `${memberGlyph(m)} ${displayName(m)}`).join(" · ")}
+                        </div>
+                      )}
+                      {(e.location || e.commute_seconds != null) && (
+                        <div className="text-xs text-zinc-400 truncate">
+                          {e.location && <span>📍 {e.location}</span>}
+                          {e.commute_seconds != null && (
+                            <span>{e.location ? " · " : ""}{e.commute_mode === "bus" ? "🚌" : "🚗"} {commuteLabel(e.commute_seconds)}</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </li>
                 );
