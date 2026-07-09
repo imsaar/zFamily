@@ -37,8 +37,9 @@ export function EventDetailSheet({
         updateEventAction(event.id, { title, member_id: memberId, location: location || null, notes: notes || null }, auth)
       );
       if (ok) {
+        // Close the sheet — reopening it would show the stale `event` prop.
         router.refresh();
-        setEditing(false);
+        onClose();
       }
     } finally {
       setPending(false);
