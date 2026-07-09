@@ -681,7 +681,7 @@ function ChoreEditor({
         </div>
         <div>
           <label className="text-sm font-medium text-zinc-500">Points</label>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {[1, 2, 3, 5, 10].map((p) => (
               <button
                 key={p}
@@ -693,6 +693,17 @@ function ChoreEditor({
                 {p}pt
               </button>
             ))}
+            <div className="flex items-center gap-2 ml-1">
+              <input
+                type="number"
+                min={1}
+                max={999}
+                value={points}
+                onChange={(e) => setPoints(Math.max(1, Math.min(999, Number(e.target.value) || 1)))}
+                className="w-20 px-3 py-2 text-center text-lg border border-zinc-300 rounded-xl tabular-nums focus:outline-none focus:border-zinc-900"
+              />
+              <span className="text-sm text-zinc-500">pts</span>
+            </div>
           </div>
         </div>
         <div>

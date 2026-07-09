@@ -8,6 +8,7 @@ import { COLOR_CLASSES, displayName } from "@/lib/types";
 import { MemberAvatar } from "./MemberAvatar";
 import type { Verse } from "@/lib/verses";
 import type { Meal, MealSlot } from "@/lib/meals";
+import type { WeatherSnapshot } from "@/lib/weather";
 
 const SLOTS: Array<{ key: MealSlot; label: string; icon: string }> = [
   { key: "breakfast", label: "Breakfast", icon: "🥣" },
@@ -27,6 +28,8 @@ export function FamilyHome({
   voteCount,
   verse,
   hijriDate,
+  weather,
+  commonChores,
 }: {
   members: Member[];
   days: Date[];
@@ -39,6 +42,8 @@ export function FamilyHome({
   voteCount: number;
   verse: Verse;
   hijriDate: string;
+  weather: WeatherSnapshot | null;
+  commonChores: { done: number; total: number };
 }) {
   const memberById = new Map(members.map((m) => [m.id, m]));
   const [showContext, setShowContext] = useState(false);
@@ -184,7 +189,7 @@ export function FamilyHome({
         <div className="px-6 py-5 border-b border-zinc-200">
           <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Switch to my view</div>
           <div className="mt-3 grid grid-cols-2 gap-3">
-            {members.map((m) => {
+            {members.filter((m) => m.role === "child").map((m) => {
               const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
               const p = chorePct.get(m.id) ?? { done: 0, total: 0 };
               const pct = p.total > 0 ? Math.round((p.done / p.total) * 100) : 0;
@@ -207,8 +212,66 @@ export function FamilyHome({
                 </Link>
               );
             })}
+            {commonChores.total > 0 && (
+              <Link
+                href="/chores"
+                className="rounded-2xl border-2 border-zinc-200 bg-white p-4 flex items-center gap-3 active:bg-zinc-50 shadow-sm"
+              >
+                <div className="w-14 h-14 rounded-full bg-zinc-100 flex items-center justify-center text-2xl shrink-0">🧹</div>
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold truncate">Common chores</div>
+                  <div className="text-xs text-zinc-500">{commonChores.done}/{commonChores.total} done today</div>
+                  <div className="mt-1 h-1.5 rounded-full bg-zinc-100 overflow-hidden">
+                    <div
+                      className="h-full bg-zinc-900"
+                      style={{ width: `${commonChores.total ? Math.round((commonChores.done / commonChores.total) * 100) : 0}%` }}
+                    />
+                  </div>
+                </div>
+              </Link>
+            )}
           </div>
         </div>
+
+        {weather && (weather.hourly.length > 0 || weather.forecast.length > 0) && (
+          <div className="px-6 py-5 border-b border-zinc-200">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Weather</div>
+              <div className="flex items-center gap-1.5 text-sm text-zinc-500">
+                <span className="text-lg leading-none">{weather.conditionIcon}</span>
+                <span className="tabular-nums">{weather.currentTempF}°</span>
+                <span className="truncate max-w-[140px]">{weather.currentCondition}</span>
+              </div>
+            </div>
+
+            {weather.hourly.length > 0 && (
+              <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+                {weather.hourly.map((h) => (
+                  <div key={h.time} className="flex flex-col items-center gap-1 shrink-0 w-12">
+                    <div className="text-[11px] text-zinc-500 tabular-nums">{format(new Date(h.time), "h a")}</div>
+                    <div className="text-2xl leading-none">{h.icon}</div>
+                    <div className="text-sm font-medium tabular-nums">{h.tempF}°</div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {weather.forecast.length > 0 && (
+              <div className="mt-4 space-y-1.5">
+                {weather.forecast.slice(0, 7).map((d, i) => (
+                  <div key={d.date} className="flex items-center gap-3 text-sm">
+                    <div className="w-12 text-zinc-500">{i === 0 ? "Today" : format(new Date(`${d.date}T12:00:00`), "EEE")}</div>
+                    <div className="text-xl leading-none w-7 text-center">{d.icon}</div>
+                    <div className="text-zinc-400 truncate flex-1">{d.condition}</div>
+                    <div className="tabular-nums shrink-0">
+                      <span className="font-medium">{d.highF}°</span> <span className="text-zinc-400">{d.lowF}°</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="px-6 py-4 space-y-3">
           <Link

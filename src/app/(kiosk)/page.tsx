@@ -7,11 +7,12 @@ import type { Meal, MealSlot } from "@/lib/meals";
 import { verseOfDay } from "@/lib/verses";
 import { toHijri } from "@/lib/hijri";
 import { getAllSettings } from "@/lib/settings";
+import { getWeather } from "@/lib/weather";
 import { addDays, startOfWeek, format } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
-export default function FamilyHomePage() {
+export default async function FamilyHomePage() {
   const now = new Date();
   const members = listMembers();
   const allChores = listChores();
@@ -54,6 +55,17 @@ export default function FamilyHomePage() {
     chorePct.set(m.id, { done: memberDue.filter((c) => done.has(c.id)).length, total: memberDue.length });
   }
 
+  // Common (shared) chores progress today — done once anyone completes them.
+  const sharedDue = todayChores.filter((c) => c.shared);
+  const completedTodayChoreIds = new Set<number>();
+  for (const m of members) {
+    for (const c of getCompletions(m.id, today, today)) completedTodayChoreIds.add(c.chore_id);
+  }
+  const commonChores = {
+    done: sharedDue.filter((c) => completedTodayChoreIds.has(c.id)).length,
+    total: sharedDue.length,
+  };
+
   const pendingCount = listPendingCompletions().length;
 
   // Today's full meal plan (breakfast/lunch/dinner) + next week's vote candidates.
@@ -67,6 +79,7 @@ export default function FamilyHomePage() {
   }
   const voteCount = listProposals().length;
 
+  const weather = await getWeather();
   const verse = verseOfDay(today);
   const settings = getAllSettings();
   const hijri = toHijri(today, Number(settings.hijri_offset ?? 0));
@@ -84,6 +97,8 @@ export default function FamilyHomePage() {
       voteCount={voteCount}
       verse={verse}
       hijriDate={hijri.formatted}
+      weather={weather}
+      commonChores={commonChores}
     />
   );
 }
