@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { format, isSameMonth, isToday, addMonths } from "date-fns";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
-import { COLOR_CLASSES } from "@/lib/types";
+import { COLOR_CLASSES, memberGradient } from "@/lib/types";
+
+function eventColors(e: EventRow, memberById: Map<number, Member>): MemberColor[] {
+  const ids = e.member_ids ?? (e.member_id != null ? [e.member_id] : []);
+  return ids.map((id) => memberById.get(id)?.color as MemberColor).filter(Boolean);
+}
 import { EventDetailSheet } from "./EventDetailSheet";
 import { QuickAddSheet } from "./QuickAddSheet";
 
@@ -87,13 +92,15 @@ export function MonthView({
               </div>
               <div className="flex-1 mt-1 space-y-0.5 overflow-hidden">
                 {dayEvents.slice(0, 3).map((e) => {
-                  const m = e.member_id ? memberById.get(e.member_id) : null;
-                  const color = m ? COLOR_CLASSES[m.color as MemberColor] : COLOR_CLASSES.sky;
+                  const cols = eventColors(e, memberById);
+                  const multi = cols.length >= 2;
+                  const single = COLOR_CLASSES[cols[0] ?? "sky"] ?? COLOR_CLASSES.sky;
                   return (
                     <button
                       key={e.id}
                       onClick={(ev) => { ev.stopPropagation(); setOpenEvent(e); }}
-                      className={`block w-full text-left text-xs px-1.5 py-0.5 rounded truncate ${color.bgSoft} ${color.text}`}
+                      style={multi ? { background: memberGradient(cols) } : undefined}
+                      className={`block w-full text-left text-xs px-1.5 py-0.5 rounded truncate ${multi ? "text-white" : `${single.bgSoft} ${single.text}`}`}
                     >
                       {e.all_day ? "" : format(new Date(e.start_ts * 1000), "h:mm") + " "}
                       {e.title}

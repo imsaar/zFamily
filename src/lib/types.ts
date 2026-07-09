@@ -19,6 +19,27 @@ export const MEMBER_COLORS: MemberColor[] = [
   "orange",
 ];
 
+// Raw hex (Tailwind -500) for building CSS gradients across member colors.
+export const MEMBER_COLOR_HEX: Record<MemberColor, string> = {
+  rose: "#f43f5e",
+  amber: "#f59e0b",
+  emerald: "#10b981",
+  sky: "#0ea5e9",
+  violet: "#8b5cf6",
+  fuchsia: "#d946ef",
+  teal: "#14b8a6",
+  orange: "#f97316",
+};
+
+/** A CSS `background` value for a set of member colors: a solid color for one,
+ *  a diagonal gradient for several (used to color multi-participant events). */
+export function memberGradient(colors: MemberColor[]): string {
+  const hexes = colors.map((c) => MEMBER_COLOR_HEX[c] ?? MEMBER_COLOR_HEX.sky);
+  if (hexes.length === 0) return MEMBER_COLOR_HEX.sky;
+  if (hexes.length === 1) return hexes[0];
+  return `linear-gradient(135deg, ${hexes.join(", ")})`;
+}
+
 // Tailwind needs these class names to appear as literals so the JIT compiler
 // includes them in the build. Don't construct them with string interpolation.
 export const COLOR_CLASSES: Record<
@@ -65,17 +86,21 @@ export function memberGlyph(m: { emoji?: string | null }): string {
 
 export type EventRow = {
   id: string;
-  member_id: number | null;
+  member_id: number | null; // primary participant (first); kept for Google sync + back-compat
+  member_ids?: number[]; // all participants (populated by the events lib on read)
   calendar_id: string;
   title: string;
   start_ts: number;
   end_ts: number;
   all_day: number;
-  location: string | null;
+  location: string | null; // display label / place name
+  address?: string | null; // resolved full address (for commute + display)
   notes: string | null;
   rrule: string | null;
   etag: string | null;
   source: string;
+  commute_seconds?: number | null; // cached commute time from home to `location`
+  commute_mode?: string | null; // "car" | "bus"
   updated_at: number;
 };
 

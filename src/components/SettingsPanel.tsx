@@ -29,6 +29,7 @@ import {
   checkForUpdateAction,
   runUpdateAction,
   restartAppAction,
+  setHomeAddressAction,
   setMemberPhotoAction,
   clearMemberPhotoAction,
   createIcalFeedAction,
@@ -1075,6 +1076,31 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
     String(Math.round(Number(settings.personal_idle_seconds ?? "120") / 60))
   );
   const [hijriOffset, setHijriOffset] = useState(String(Number(settings.hijri_offset ?? "0")));
+  const [commuteMode, setCommuteMode] = useState(settings.commute_mode === "bus" ? "bus" : "car");
+  const [homeAddr, setHomeAddr] = useState(settings.home_address ?? "");
+  const [homeBusy, setHomeBusy] = useState(false);
+  const [homeMsg, setHomeMsg] = useState<string | null>(null);
+
+  const saveHome = async () => {
+    setHomeBusy(true);
+    setHomeMsg(null);
+    try {
+      const holder: { resolved: string | null } = { resolved: null };
+      const ok = await authenticate(async (auth) => {
+        const r = await setHomeAddressAction(homeAddr, auth);
+        if (r.ok && "resolved" in r) holder.resolved = r.resolved ?? null;
+        return { ok: r.ok };
+      });
+      if (ok) {
+        setHomeMsg(holder.resolved ? `📍 ${holder.resolved}` : "Home address cleared.");
+        router.refresh();
+      } else {
+        setHomeMsg("Couldn’t find that address — try a more specific one.");
+      }
+    } finally {
+      setHomeBusy(false);
+    }
+  };
 
   const save = async () => {
     setPending(true);
@@ -1090,6 +1116,7 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
           ["onscreen_keyboard", String(keyboard)],
           ["personal_idle_seconds", String(Math.max(30, Number(personalIdleMin) * 60))],
           ["hijri_offset", String(Math.max(-3, Math.min(3, Number(hijriOffset) || 0)))],
+          ["commute_mode", commuteMode],
         ];
         for (const [k, v] of updates) {
           const r = await updateSettingAction(k, v, auth);
@@ -1184,6 +1211,42 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
           Shift the Islamic (Umm al-Qura) date by ±3 days to match your local moon-sighting authority.
         </p>
       </div>
+
+      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+        <label className="text-sm font-medium text-zinc-700">🏠 Home address</label>
+        <p className="text-xs text-zinc-500 mt-0.5 mb-2">
+          Used as the origin for event commute estimates, and as the location for weather.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <input
+            value={homeAddr}
+            onChange={(e) => setHomeAddr(e.target.value)}
+            placeholder="123 Main St, City"
+            className="flex-1 min-w-[220px] px-4 py-2.5 border border-zinc-300 rounded-xl"
+          />
+          <button onClick={saveHome} disabled={homeBusy} className="px-5 py-2.5 rounded-xl bg-zinc-900 text-white text-sm font-medium disabled:opacity-50">
+            {homeBusy ? "Saving…" : "Save home"}
+          </button>
+        </div>
+        {homeMsg && <p className="text-sm text-zinc-600 mt-2 break-words">{homeMsg}</p>}
+
+        <div className="mt-4">
+          <div className="text-sm font-medium text-zinc-700">Commute by</div>
+          <div className="mt-2 flex gap-2">
+            {(["car", "bus"] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setCommuteMode(m)}
+                className={`px-5 py-2 rounded-full border-2 ${commuteMode === m ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200"}`}
+              >
+                {m === "car" ? "🚗 Car" : "🚌 Bus"}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-zinc-500 mt-1">Bus is a rough distance-based estimate. Saved with the button below.</p>
+        </div>
+      </div>
+
       <div className="flex items-center gap-3">
         <button onClick={save} disabled={pending} className="px-6 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-50">
           {pending ? "Saving…" : "Save"}

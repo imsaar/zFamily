@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { createEventAction } from "@/app/actions";
+import { AddressField } from "./AddressField";
 import type { Member, MemberColor } from "@/lib/types";
 import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
@@ -11,7 +12,9 @@ export function MobileEventForm({ members }: { members: Member[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [title, setTitle] = useState("");
-  const [memberId, setMemberId] = useState<number | null>(members[0]?.id ?? null);
+  const [memberIds, setMemberIds] = useState<Set<number>>(new Set());
+  const [location, setLocation] = useState("");
+  const [address, setAddress] = useState("");
   const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [time, setTime] = useState(format(new Date(Date.now() + 3600_000), "HH:00"));
   const [duration, setDuration] = useState(60);
@@ -25,11 +28,13 @@ export function MobileEventForm({ members }: { members: Member[] }) {
       const startDate = new Date(`${date}T${allDay ? "00:00" : time}:00`);
       const endDate = new Date(startDate.getTime() + (allDay ? 24 * 3600_000 : duration * 60_000));
       await createEventAction({
-        member_id: memberId,
+        member_ids: Array.from(memberIds),
         title: title.trim(),
         start_ts: Math.floor(startDate.getTime() / 1000),
         end_ts: Math.floor(endDate.getTime() / 1000),
         all_day: allDay,
+        location: location.trim() || undefined,
+        address: address.trim() || null,
         recurrence,
         interval,
       });
@@ -51,15 +56,21 @@ export function MobileEventForm({ members }: { members: Member[] }) {
       </div>
 
       <div>
-        <label className="text-sm font-medium text-zinc-500">Who</label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium text-zinc-500">Who</label>
+          <div className="flex gap-3 text-sm">
+            <button onClick={() => setMemberIds(new Set(members.map((m) => m.id)))} className="text-zinc-600">All</button>
+            <button onClick={() => setMemberIds(new Set())} className="text-zinc-600">Clear</button>
+          </div>
+        </div>
         <div className="mt-2 flex flex-wrap gap-2">
           {members.map((m) => {
             const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
-            const selected = memberId === m.id;
+            const selected = memberIds.has(m.id);
             return (
               <button
                 key={m.id}
-                onClick={() => setMemberId(m.id)}
+                onClick={() => setMemberIds((prev) => { const n = new Set(prev); n.has(m.id) ? n.delete(m.id) : n.add(m.id); return n; })}
                 className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
                   selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200 bg-white text-zinc-700"
                 }`}
@@ -69,6 +80,13 @@ export function MobileEventForm({ members }: { members: Member[] }) {
               </button>
             );
           })}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-sm font-medium text-zinc-500">Location</label>
+        <div className="mt-1">
+          <AddressField name={location} address={address} onNameChange={setLocation} onAddressChange={setAddress} />
         </div>
       </div>
 

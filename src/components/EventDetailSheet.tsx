@@ -6,6 +6,7 @@ import { format } from "date-fns";
 import { Sheet } from "./Sheet";
 import { deleteEventAction, updateEventAction } from "@/app/actions";
 import { useAdminAuth } from "./AdminGate";
+import { AddressField } from "./AddressField";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
 import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
@@ -24,8 +25,11 @@ export function EventDetailSheet({
   const { authenticate, modal } = useAdminAuth();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(event.title);
-  const [memberId, setMemberId] = useState<number | null>(event.member_id);
+  const [memberIds, setMemberIds] = useState<Set<number>>(
+    new Set(event.member_ids ?? (event.member_id != null ? [event.member_id] : []))
+  );
   const [location, setLocation] = useState(event.location ?? "");
+  const [address, setAddress] = useState(event.address ?? "");
   const [notes, setNotes] = useState(event.notes ?? "");
 
   const isLocal = event.source === "local";
@@ -34,7 +38,7 @@ export function EventDetailSheet({
     setPending(true);
     try {
       const ok = await authenticate((auth) =>
-        updateEventAction(event.id, { title, member_id: memberId, location: location || null, notes: notes || null }, auth)
+        updateEventAction(event.id, { title, member_ids: Array.from(memberIds), location: location || null, address: address || null, notes: notes || null }, auth)
       );
       if (ok) {
         // Close the sheet — reopening it would show the stale `event` prop.
@@ -73,15 +77,21 @@ export function EventDetailSheet({
               className="w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl"
             />
             <div>
-              <label className="text-sm font-medium text-zinc-500">Who</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-zinc-500">Who</label>
+                <div className="flex gap-3 text-sm">
+                  <button onClick={() => setMemberIds(new Set(members.map((m) => m.id)))} className="text-zinc-600">All</button>
+                  <button onClick={() => setMemberIds(new Set())} className="text-zinc-600">Clear</button>
+                </div>
+              </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {members.map((m) => {
                   const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
-                  const selected = memberId === m.id;
+                  const selected = memberIds.has(m.id);
                   return (
                     <button
                       key={m.id}
-                      onClick={() => setMemberId(m.id)}
+                      onClick={() => setMemberIds((prev) => { const n = new Set(prev); n.has(m.id) ? n.delete(m.id) : n.add(m.id); return n; })}
                       className={`px-4 py-2 rounded-full border-2 ${
                         selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200"
                       }`}
@@ -92,12 +102,7 @@ export function EventDetailSheet({
                 })}
               </div>
             </div>
-            <input
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-              placeholder="Location"
-              className="w-full px-4 py-3 border border-zinc-300 rounded-xl"
-            />
+            <AddressField name={location} address={address} onNameChange={setLocation} onAddressChange={setAddress} />
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
@@ -114,10 +119,27 @@ export function EventDetailSheet({
                 ? `${format(startD, "EEE, MMM d")} · All day`
                 : `${format(startD, "EEE, MMM d · h:mm a")} – ${format(endD, "h:mm a")}`}
             </div>
-            {event.member_id && (
-              <MemberPill member={members.find((m) => m.id === event.member_id)} />
+            {(event.member_ids ?? (event.member_id != null ? [event.member_id] : [])).length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {(event.member_ids ?? (event.member_id != null ? [event.member_id] : [])).map((id) => (
+                  <MemberPill key={id} member={members.find((m) => m.id === id)} />
+                ))}
+              </div>
             )}
-            {event.location && <div className="text-base">📍 {event.location}</div>}
+            {(event.location || event.address) && (
+              <div className="text-base">
+                <div>📍 {event.location || event.address}</div>
+                {event.address && event.location && event.address !== event.location && (
+                  <div className="text-sm text-zinc-500">{event.address}</div>
+                )}
+              </div>
+            )}
+            {event.commute_seconds != null && (
+              <div className="text-base text-zinc-600">
+                {event.commute_mode === "bus" ? "🚌" : "🚗"} ~{commuteLabel(event.commute_seconds)} from home
+                {event.commute_mode === "bus" ? " (est.)" : ""}
+              </div>
+            )}
             {event.notes && (
               <div className="text-base text-zinc-700 whitespace-pre-wrap">{event.notes}</div>
             )}
@@ -171,6 +193,14 @@ export function EventDetailSheet({
       {modal}
     </Sheet>
   );
+}
+
+export function commuteLabel(seconds: number): string {
+  const mins = Math.max(1, Math.round(seconds / 60));
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
 }
 
 function MemberPill({ member }: { member: Member | undefined }) {

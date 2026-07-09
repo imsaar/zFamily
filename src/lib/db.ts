@@ -80,11 +80,20 @@ CREATE TABLE IF NOT EXISTS events (
   end_ts         INTEGER NOT NULL,
   all_day        INTEGER NOT NULL DEFAULT 0,
   location       TEXT,
+  address        TEXT,
   notes          TEXT,
   rrule          TEXT,
   etag           TEXT,
   source         TEXT NOT NULL DEFAULT 'local',
+  commute_seconds INTEGER,
+  commute_mode   TEXT,
   updated_at     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS event_members (
+  event_id   TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+  member_id  INTEGER NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+  PRIMARY KEY (event_id, member_id)
 );
 CREATE INDEX IF NOT EXISTS events_range ON events(start_ts, end_ts);
 CREATE INDEX IF NOT EXISTS events_member ON events(member_id);
@@ -196,6 +205,9 @@ function migrate(conn: Database.Database) {
   ensureColumn(conn, "meals", "slots", "TEXT");
   ensureColumn(conn, "members", "role", "TEXT NOT NULL DEFAULT 'parent'");
   ensureColumn(conn, "chores", "shared", "INTEGER NOT NULL DEFAULT 0");
+  ensureColumn(conn, "events", "commute_seconds", "INTEGER");
+  ensureColumn(conn, "events", "commute_mode", "TEXT");
+  ensureColumn(conn, "events", "address", "TEXT");
   ensureColumn(conn, "chore_completions", "verified_at", "INTEGER");
   ensureColumn(conn, "chore_completions", "verified_by", "INTEGER REFERENCES members(id) ON DELETE SET NULL");
   ensureColumn(conn, "members", "pin_hash", "TEXT");
@@ -252,6 +264,7 @@ const ALL_TABLES = [
   "meal_proposals",
   "meal_plan_entries",
   "shopping_items",
+  "event_members",
   "events",
   "ical_feeds",
   "chores",
