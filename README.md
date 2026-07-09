@@ -345,7 +345,16 @@ Tables:
 - `rewards`, `reward_redemptions` — gamification (points shelf + audit log)
 - `settings` — key/value config
 
-### Backing up
+### In-app backup / restore (easiest)
+
+**Settings → ⚠️ Advanced → 💾 Backup & restore** lets a parent, right from the wall display:
+
+- **Export backup** — downloads a single `zfamily-backup-YYYY-MM-DD.json` file with **all** data (members + headshot photos, chores and completions, events, meal plans/shopping, rewards, PINs, and settings; photos are base64-embedded).
+- **Restore from backup** — upload a backup file to **replace everything** currently on the device (runs in one transaction, so a bad file leaves your data untouched). The app reloads when done.
+
+The backup file contains PIN hashes and linked-account tokens — treat it like a password.
+
+### Backing up (file-level)
 
 ```bash
 sudo systemctl stop zfamily

@@ -5,6 +5,7 @@ import { createLocalEvent, deleteEvent, upsertEvent, getEvent } from "@/lib/even
 import { toggleCompletion, createChore, updateChore, deleteChore, verifyCompletion, unverifyCompletion, completeSharedChore, uncompleteSharedChore } from "@/lib/chores";
 import { createMember, updateMember, deleteMember, setMemberPhoto, clearMemberPhoto } from "@/lib/members";
 import { factoryReset } from "@/lib/db";
+import { exportAllData, importAllData } from "@/lib/backup";
 import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting } from "@/lib/settings";
@@ -208,6 +209,24 @@ export async function factoryResetAction(admin?: AdminAuth) {
   resetWeatherCache();
   bust();
   return { ok: true as const };
+}
+
+// Full-database backup: export everything as JSON, or restore (replace all) from
+// a backup. Parent-gated; the whole export includes PIN hashes and Google tokens.
+export async function exportAllDataAction(admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  return { ok: true as const, backup: exportAllData() };
+}
+
+export async function importAllDataAction(backup: unknown, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  const r = importAllData(backup);
+  if (!r.ok) return { ok: false as const, reason: r.reason ?? "import_failed" };
+  resetWeatherCache();
+  bust();
+  return { ok: true as const, rows: r.rows ?? 0 };
 }
 
 export async function updateMemberAction(id: number, patch: { name?: string; nickname?: string | null; color?: MemberColor; emoji?: string | null; role?: MemberRole }, admin?: AdminAuth) {

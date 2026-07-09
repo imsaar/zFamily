@@ -21,6 +21,8 @@ import {
   clearMemberPinAction,
   searchCityAction,
   factoryResetAction,
+  exportAllDataAction,
+  importAllDataAction,
   setMemberPhotoAction,
   clearMemberPhotoAction,
   createIcalFeedAction,
@@ -1427,6 +1429,60 @@ function AdvancedTab() {
   const router = useRouter();
   const { authenticate, modal } = useSettingsAuth();
   const [pending, setPending] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMsg, setBackupMsg] = useState<string | null>(null);
+
+  const exportData = async () => {
+    setBackupMsg(null);
+    setBackupBusy(true);
+    try {
+      let backup: unknown = null;
+      const ok = await authenticate(async (auth) => {
+        const r = await exportAllDataAction(auth);
+        if (r.ok) backup = r.backup;
+        return r;
+      });
+      if (ok && backup) {
+        const blob = new Blob([JSON.stringify(backup)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `zfamily-backup-${new Date().toISOString().slice(0, 10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setBackupMsg("Backup downloaded.");
+      }
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const importData = async (file: File | null) => {
+    if (!file) return;
+    setBackupMsg(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      setBackupMsg("That file isn’t a valid backup (couldn’t read JSON).");
+      return;
+    }
+    if (!confirm("Restoring REPLACES all current data with this backup. This cannot be undone. Continue?")) return;
+    setBackupBusy(true);
+    try {
+      const ok = await authenticate((auth) => importAllDataAction(parsed, auth));
+      if (ok) {
+        setBackupMsg("Restored — reloading…");
+        window.location.href = "/";
+      } else {
+        setBackupMsg("Restore failed — that file may not be a zFamily backup.");
+      }
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   const reset = async () => {
     if (!confirm("Factory reset erases ALL data — family members, chores, meal plans, rewards, PINs, and settings. This cannot be undone. Continue?")) {
@@ -1448,6 +1504,45 @@ function AdvancedTab() {
     <div className="max-w-2xl">
       <h2 className="text-2xl font-semibold mb-2">Advanced</h2>
       <p className="text-zinc-500 mb-8">Maintenance actions for this device.</p>
+
+      <div className="rounded-2xl border-2 border-zinc-200 bg-white p-6 mb-6">
+        <h3 className="text-lg font-semibold">💾 Backup &amp; restore</h3>
+        <p className="text-sm text-zinc-600 mt-2 mb-5">
+          Download a single file containing <span className="font-medium">all</span> data — family members and photos,
+          chores and completions, calendar events, meal plans and shopping, rewards, PINs, and settings. Keep it
+          somewhere safe; restoring replaces everything currently on this device.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={exportData}
+            disabled={backupBusy}
+            className="px-6 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-50"
+          >
+            {backupBusy ? "Working…" : "⬇️ Export backup"}
+          </button>
+          <label
+            className={`px-6 py-3 rounded-xl border-2 border-zinc-300 font-medium cursor-pointer ${
+              backupBusy ? "opacity-50 pointer-events-none" : "active:bg-zinc-50"
+            }`}
+          >
+            ⬆️ Restore from backup
+            <input
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              disabled={backupBusy}
+              onChange={(e) => {
+                importData(e.target.files?.[0] ?? null);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
+        {backupMsg && <p className="text-sm text-zinc-600 mt-3">{backupMsg}</p>}
+        <p className="text-xs text-zinc-400 mt-3">
+          The backup file contains PINs and linked-account tokens — treat it like a password.
+        </p>
+      </div>
 
       <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-6">
         <h3 className="text-lg font-semibold text-red-900">⚠️ Factory reset</h3>
