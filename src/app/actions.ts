@@ -5,6 +5,7 @@ import { createLocalEvent, deleteEvent, upsertEvent, getEvent } from "@/lib/even
 import { toggleCompletion, createChore, updateChore, deleteChore, verifyCompletion, unverifyCompletion, completeSharedChore, uncompleteSharedChore } from "@/lib/chores";
 import { createMember, updateMember, deleteMember, setMemberPhoto, clearMemberPhoto } from "@/lib/members";
 import { factoryReset } from "@/lib/db";
+import { exportAllData, importAllData, saveBackupToDisk, listBackups, readStoredBackup, backupDir, defaultBackupDir } from "@/lib/backup";
 import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting } from "@/lib/settings";
@@ -208,6 +209,58 @@ export async function factoryResetAction(admin?: AdminAuth) {
   resetWeatherCache();
   bust();
   return { ok: true as const };
+}
+
+// Full-database backup: export everything as JSON, or restore (replace all) from
+// a backup. Parent-gated; the whole export includes PIN hashes and Google tokens.
+export async function exportAllDataAction(admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  return { ok: true as const, backup: exportAllData() };
+}
+
+// Save a backup to disk (into the configured backup directory) instead of
+// downloading it. Also list stored backups and restore from one.
+export async function saveBackupToDiskAction(admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  const r = saveBackupToDisk();
+  if (!r.ok) return { ok: false as const, reason: r.reason ?? "write_failed" };
+  return { ok: true as const, name: r.name!, path: r.path!, bytes: r.bytes ?? 0 };
+}
+
+export async function listBackupsAction(admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  return { ok: true as const, dir: backupDir(), defaultDir: defaultBackupDir(), backups: listBackups() };
+}
+
+export async function restoreStoredBackupAction(name: string, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  const backup = readStoredBackup(name);
+  if (!backup) return { ok: false as const, reason: "backup_not_found" };
+  const r = importAllData(backup);
+  if (!r.ok) return { ok: false as const, reason: r.reason ?? "import_failed" };
+  resetWeatherCache();
+  bust();
+  return { ok: true as const, rows: r.rows ?? 0 };
+}
+
+export async function importAllDataAction(backup: unknown, admin?: AdminAuth) {
+  // Bootstrap exception: on a fresh/erased device (no members yet) restoring is
+  // allowed without a parent PIN — there's no parent to authorize it. Once data
+  // exists (restore from Settings), require parent auth.
+  const hasAny = ((await import("@/lib/db")).db().prepare("SELECT COUNT(*) as n FROM members").get() as { n: number }).n > 0;
+  if (hasAny) {
+    const gate = await requireParentAuth(admin);
+    if (!gate.ok) return gate;
+  }
+  const r = importAllData(backup);
+  if (!r.ok) return { ok: false as const, reason: r.reason ?? "import_failed" };
+  resetWeatherCache();
+  bust();
+  return { ok: true as const, rows: r.rows ?? 0 };
 }
 
 export async function updateMemberAction(id: number, patch: { name?: string; nickname?: string | null; color?: MemberColor; emoji?: string | null; role?: MemberRole }, admin?: AdminAuth) {

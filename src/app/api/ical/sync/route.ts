@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { syncDueFeeds } from "@/lib/ical";
+import { maybeAutoBackup } from "@/lib/backup";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,9 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   const force = new URL(req.url).searchParams.get("force") === "1";
   try {
+    // The always-on kiosk polls this regularly — a good heartbeat for the
+    // periodic auto-backup (only writes when actually due).
+    try { maybeAutoBackup(); } catch { /* never block sync */ }
     const result = await syncDueFeeds({ force });
     if (result.synced > 0) {
       revalidatePath("/", "layout");

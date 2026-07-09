@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { syncAllMembers } from "@/lib/google";
 import { syncDueFeeds } from "@/lib/ical";
+import { maybeAutoBackup } from "@/lib/backup";
 import { revalidatePath } from "next/cache";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
+    try { maybeAutoBackup(); } catch { /* never block sync */ }
     const result = await syncAllMembers();
     // Also refresh any iCal subscription feeds whose interval has elapsed.
     const ical = await syncDueFeeds();

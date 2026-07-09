@@ -4,6 +4,11 @@ import fs from "node:fs";
 
 const DB_DIR = process.env.ZFAMILY_DATA_DIR || process.env.SMARTCAL_DATA_DIR || path.join(process.cwd(), ".data");
 const DB_PATH = path.join(DB_DIR, "zfamily.db");
+
+/** The resolved data directory (holds zfamily.db). */
+export function dataDir(): string {
+  return DB_DIR;
+}
 const LEGACY_DB_PATH = path.join(DB_DIR, "smartcal.db");
 
 let _db: Database.Database | null = null;
