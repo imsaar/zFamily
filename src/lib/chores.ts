@@ -24,22 +24,27 @@ export function createChore(input: {
   points?: number;
   recurrence: string;
   assignees: number[];
+  shared?: boolean;
 }): number {
   const now = Math.floor(Date.now() / 1000);
+  const shared = input.shared ? 1 : 0;
   const r = db()
     .prepare(
-      "INSERT INTO chores (title, icon, points, recurrence, active, created_at) VALUES (?, ?, ?, ?, 1, ?)"
+      "INSERT INTO chores (title, icon, points, recurrence, active, shared, created_at) VALUES (?, ?, ?, ?, 1, ?, ?)"
     )
-    .run(input.title, input.icon ?? null, input.points ?? 1, input.recurrence, now);
+    .run(input.title, input.icon ?? null, input.points ?? 1, input.recurrence, shared, now);
   const id = Number(r.lastInsertRowid);
-  const assignStmt = db().prepare("INSERT INTO chore_assignees (chore_id, member_id) VALUES (?, ?)");
-  for (const m of input.assignees) assignStmt.run(id, m);
+  // Common chores have no assignees.
+  if (!shared) {
+    const assignStmt = db().prepare("INSERT INTO chore_assignees (chore_id, member_id) VALUES (?, ?)");
+    for (const m of input.assignees) assignStmt.run(id, m);
+  }
   return id;
 }
 
 export function updateChore(
   id: number,
-  patch: { title?: string; icon?: string | null; points?: number; recurrence?: string; assignees?: number[] }
+  patch: { title?: string; icon?: string | null; points?: number; recurrence?: string; assignees?: number[]; shared?: boolean }
 ) {
   const fields: string[] = [];
   const values: unknown[] = [];
@@ -47,15 +52,48 @@ export function updateChore(
   if (patch.icon !== undefined) { fields.push("icon = ?"); values.push(patch.icon); }
   if (patch.points !== undefined) { fields.push("points = ?"); values.push(patch.points); }
   if (patch.recurrence !== undefined) { fields.push("recurrence = ?"); values.push(patch.recurrence); }
+  if (patch.shared !== undefined) { fields.push("shared = ?"); values.push(patch.shared ? 1 : 0); }
   if (fields.length > 0) {
     values.push(id);
     db().prepare(`UPDATE chores SET ${fields.join(", ")} WHERE id = ?`).run(...values);
   }
-  if (patch.assignees) {
+  if (patch.shared === true) {
+    // A common chore has no assignees.
+    db().prepare("DELETE FROM chore_assignees WHERE chore_id = ?").run(id);
+  } else if (patch.assignees) {
     db().prepare("DELETE FROM chore_assignees WHERE chore_id = ?").run(id);
     const ins = db().prepare("INSERT INTO chore_assignees (chore_id, member_id) VALUES (?, ?)");
     for (const m of patch.assignees) ins.run(id, m);
   }
+}
+
+/** The single completion for a common chore on a given day (whoever did it),
+ *  or undefined if nobody has done it yet. */
+export function sharedCompletionFor(choreId: number, date: Date): ChoreCompletion | undefined {
+  return db()
+    .prepare("SELECT * FROM chore_completions WHERE chore_id = ? AND completed_for = ? LIMIT 1")
+    .get(choreId, format(date, "yyyy-MM-dd")) as ChoreCompletion | undefined;
+}
+
+/** Complete a common chore, attributed to `byMemberId`. Blocks if someone has
+ *  already done it for this period (one completion per chore per day). */
+export function completeSharedChore(choreId: number, byMemberId: number, date: Date): { ok: boolean; reason?: string } {
+  const dayStr = format(date, "yyyy-MM-dd");
+  const existing = db()
+    .prepare("SELECT id FROM chore_completions WHERE chore_id = ? AND completed_for = ? LIMIT 1")
+    .get(choreId, dayStr) as { id: number } | undefined;
+  if (existing) return { ok: false, reason: "already_done" };
+  db()
+    .prepare("INSERT INTO chore_completions (chore_id, member_id, completed_for, completed_at) VALUES (?, ?, ?, ?)")
+    .run(choreId, byMemberId, dayStr, Math.floor(Date.now() / 1000));
+  return { ok: true };
+}
+
+/** Undo a common chore's completion for the day (unlocks it for others). */
+export function uncompleteSharedChore(choreId: number, date: Date) {
+  db()
+    .prepare("DELETE FROM chore_completions WHERE chore_id = ? AND completed_for = ?")
+    .run(choreId, format(date, "yyyy-MM-dd"));
 }
 
 export function deleteChore(id: number) {
@@ -157,7 +195,7 @@ export function eligibleVerifiers(completion: ChoreCompletion): number[] {
 export function listPendingCompletions(): Array<ChoreCompletion & { chore: Chore }> {
   const rows = db()
     .prepare(
-      `SELECT c.*, ch.title AS ch_title, ch.icon AS ch_icon, ch.points AS ch_points, ch.recurrence AS ch_recurrence, ch.active AS ch_active, ch.created_at AS ch_created_at
+      `SELECT c.*, ch.title AS ch_title, ch.icon AS ch_icon, ch.points AS ch_points, ch.recurrence AS ch_recurrence, ch.active AS ch_active, ch.shared AS ch_shared, ch.created_at AS ch_created_at
        FROM chore_completions c JOIN chores ch ON ch.id = c.chore_id
        WHERE c.verified_at IS NULL
        ORDER BY c.completed_at DESC`
@@ -169,6 +207,7 @@ export function listPendingCompletions(): Array<ChoreCompletion & { chore: Chore
         ch_points: number;
         ch_recurrence: string;
         ch_active: number;
+        ch_shared: number;
         ch_created_at: number;
       }
     >;
@@ -187,6 +226,7 @@ export function listPendingCompletions(): Array<ChoreCompletion & { chore: Chore
       points: r.ch_points,
       recurrence: r.ch_recurrence,
       active: r.ch_active,
+      shared: r.ch_shared,
       created_at: r.ch_created_at,
     },
   }));

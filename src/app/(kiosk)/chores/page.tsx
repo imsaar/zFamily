@@ -11,11 +11,22 @@ export default function ChoresPage() {
   const members = listMembers();
   const chores = listChores();
   const today = new Date();
-  const todayChores = chores.filter((c) => isDueOn(c, today));
+  const dueToday = chores.filter((c) => isDueOn(c, today));
+  const todayChores = dueToday.filter((c) => !c.shared);
+  const sharedChores = dueToday.filter((c) => c.shared);
 
   const completionsByMember = new Map<number, ChoreCompletion[]>();
   for (const m of members) {
     completionsByMember.set(m.id, getCompletions(m.id, today, today));
+  }
+
+  // For each due common chore, the single completion (who did it), if any.
+  const sharedChoreIds = new Set(sharedChores.map((c) => c.id));
+  const sharedCompletionByChore = new Map<number, ChoreCompletion>();
+  for (const comps of completionsByMember.values()) {
+    for (const comp of comps) {
+      if (sharedChoreIds.has(comp.chore_id)) sharedCompletionByChore.set(comp.chore_id, comp);
+    }
   }
 
   const weekStart = startOfWeek(today, { weekStartsOn: 0 });
@@ -49,6 +60,8 @@ export default function ChoresPage() {
     <ChoreBoard
       members={members}
       todayChores={todayChores}
+      sharedChores={sharedChores}
+      sharedCompletionByChore={sharedCompletionByChore}
       completionsByMember={completionsByMember}
       weeklyStats={weeklyStats}
       streaks={streaks}

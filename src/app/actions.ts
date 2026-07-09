@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createLocalEvent, deleteEvent, upsertEvent, getEvent } from "@/lib/events";
-import { toggleCompletion, createChore, updateChore, deleteChore, verifyCompletion, unverifyCompletion } from "@/lib/chores";
+import { toggleCompletion, createChore, updateChore, deleteChore, verifyCompletion, unverifyCompletion, completeSharedChore, uncompleteSharedChore } from "@/lib/chores";
 import { createMember, updateMember, deleteMember, setMemberPhoto, clearMemberPhoto } from "@/lib/members";
 import { factoryReset } from "@/lib/db";
 import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
@@ -26,7 +26,6 @@ import {
   removeProposal,
   castVote,
   withdrawVote,
-  applyWinnersToPlan,
 } from "@/lib/meals";
 import type { Ingredient, MealSlot } from "@/lib/meals";
 import type { MemberColor, MemberRole } from "@/lib/types";
@@ -71,6 +70,19 @@ export async function toggleChoreAction(choreId: number, memberId: number) {
   bust();
 }
 
+// Common chores: anyone can complete once per period; we record who did it.
+export async function completeSharedChoreAction(choreId: number, byMemberId: number) {
+  const result = completeSharedChore(choreId, byMemberId, new Date());
+  bust();
+  return result;
+}
+
+export async function uncompleteSharedChoreAction(choreId: number) {
+  uncompleteSharedChore(choreId, new Date());
+  bust();
+  return { ok: true as const };
+}
+
 export async function createEventAction(input: {
   member_id: number | null;
   title: string;
@@ -79,7 +91,8 @@ export async function createEventAction(input: {
   all_day?: boolean;
   location?: string;
   notes?: string;
-  recurrence?: "none" | "weekly" | "monthly" | "quarterly" | null;
+  recurrence?: "none" | "daily" | "weekdays" | "weekly" | "monthly" | null;
+  interval?: number;
 }) {
   createLocalEvent(input);
   bust();
@@ -250,6 +263,7 @@ export async function createChoreAction(input: {
   points?: number;
   recurrence: string;
   assignees: number[];
+  shared?: boolean;
 }, admin?: AdminAuth) {
   const gate = await requireParentAuth(admin);
   if (!gate.ok) return gate;
@@ -260,7 +274,7 @@ export async function createChoreAction(input: {
 
 export async function updateChoreAction(
   id: number,
-  patch: { title?: string; icon?: string | null; points?: number; recurrence?: string; assignees?: number[] },
+  patch: { title?: string; icon?: string | null; points?: number; recurrence?: string; assignees?: number[]; shared?: boolean },
   admin?: AdminAuth
 ) {
   const gate = await requireParentAuth(admin);
@@ -356,8 +370,8 @@ export async function toggleFavoriteAction(mealId: number) {
   bust();
 }
 
-export async function proposeMealAction(mealId: number, weekStart: string) {
-  proposeMeal(mealId, weekStart);
+export async function proposeMealAction(mealId: number, slotType: MealSlot, memberId: number | null) {
+  proposeMeal(mealId, slotType, memberId);
   bust();
 }
 
@@ -375,11 +389,6 @@ export async function toggleVoteAction(proposalId: number, memberId: number, wan
   return { ok: true as const };
 }
 
-export async function applyWinnersAction(weekStart: string, overwrite = false) {
-  const n = applyWinnersToPlan(weekStart, overwrite);
-  bust();
-  return { filled: n };
-}
 
 // Verification & rewards
 

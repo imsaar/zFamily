@@ -505,17 +505,21 @@ function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members:
               <div className="text-sm text-zinc-500">
                 {RECURRENCES.find(([r]) => r === c.recurrence)?.[1] ?? c.recurrence} · {c.points} pts
               </div>
-              <div className="flex gap-1 mt-1">
-                {c.assignees.map((aid) => {
-                  const m = members.find((mm) => mm.id === aid);
-                  if (!m) return null;
-                  const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
-                  return (
-                    <span key={aid} className={`text-xs px-2 py-0.5 rounded-full ${color.bgSoft} ${color.text}`}>
-                      {m.name}
-                    </span>
-                  );
-                })}
+              <div className="flex flex-wrap gap-1 mt-1">
+                {c.shared === 1 ? (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">🧹 Anyone (common)</span>
+                ) : (
+                  c.assignees.map((aid) => {
+                    const m = members.find((mm) => mm.id === aid);
+                    if (!m) return null;
+                    const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
+                    return (
+                      <span key={aid} className={`text-xs px-2 py-0.5 rounded-full ${color.bgSoft} ${color.text}`}>
+                        {m.name}
+                      </span>
+                    );
+                  })
+                )}
               </div>
             </div>
             <button onClick={() => setEditing(c)} className="px-4 py-2 rounded-lg border border-zinc-300">Edit</button>
@@ -624,6 +628,7 @@ function ChoreEditor({
   const [points, setPoints] = useState(chore?.points ?? template?.points ?? 1);
   const [recurrence, setRecurrence] = useState(chore?.recurrence ?? template?.recurrence ?? "daily");
   const [assignees, setAssignees] = useState<Set<number>>(new Set(chore?.assignees ?? []));
+  const [shared, setShared] = useState(chore?.shared === 1);
 
   const onSave = async () => {
     if (!title.trim()) return;
@@ -634,7 +639,8 @@ function ChoreEditor({
         icon: icon || null,
         points,
         recurrence,
-        assignees: Array.from(assignees),
+        assignees: shared ? [] : Array.from(assignees),
+        shared,
       };
       const ok = await authenticate((auth) => {
         if (chore) return updateChoreAction(chore.id, data, auth);
@@ -690,36 +696,57 @@ function ChoreEditor({
           </div>
         </div>
         <div>
-          <label className="text-sm font-medium text-zinc-500">Assigned to</label>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {members.map((m) => {
-              const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
-              const selected = assignees.has(m.id);
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => {
-                    const next = new Set(assignees);
-                    if (next.has(m.id)) next.delete(m.id);
-                    else next.add(m.id);
-                    setAssignees(next);
-                  }}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
-                    selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200"
-                  }`}
-                >
-                  <span>{memberGlyph(m)}</span>
-                  <span>{m.name}</span>
-                </button>
-              );
-            })}
-          </div>
+          <label className="text-sm font-medium text-zinc-500">Who does it</label>
+          <button
+            onClick={() => setShared((s) => !s)}
+            className={`mt-2 w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left ${
+              shared ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200"
+            }`}
+          >
+            <span className={`w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 ${shared ? "bg-white border-white text-zinc-900" : "border-zinc-400"}`}>
+              {shared ? "✓" : ""}
+            </span>
+            <span>
+              <span className="font-medium">🧹 Common chore — anyone can do it</span>
+              <span className={`block text-xs ${shared ? "text-white/70" : "text-zinc-500"}`}>
+                First person to do it completes it for everyone this {recurrence === "daily" ? "day" : "period"}.
+              </span>
+            </span>
+          </button>
         </div>
+        {!shared && (
+          <div>
+            <label className="text-sm font-medium text-zinc-500">Assigned to</label>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {members.map((m) => {
+                const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
+                const selected = assignees.has(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      const next = new Set(assignees);
+                      if (next.has(m.id)) next.delete(m.id);
+                      else next.add(m.id);
+                      setAssignees(next);
+                    }}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+                      selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200"
+                    }`}
+                  >
+                    <span>{memberGlyph(m)}</span>
+                    <span>{m.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="flex gap-3 pt-2">
           <button onClick={onClose} className="flex-1 py-3 rounded-xl border border-zinc-300">Cancel</button>
           <button
             onClick={onSave}
-            disabled={pending || !title.trim() || assignees.size === 0}
+            disabled={pending || !title.trim() || (!shared && assignees.size === 0)}
             className="flex-1 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-40"
           >
             Save

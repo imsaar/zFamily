@@ -2,7 +2,7 @@ import { FamilyHome } from "@/components/FamilyHome";
 import { listMembers } from "@/lib/members";
 import { listEventsInRange } from "@/lib/events";
 import { listChores, getCompletions, isDueOn, listPendingCompletions } from "@/lib/chores";
-import { listProposals, nextWeekStart, listPlanForRange, getMeal } from "@/lib/meals";
+import { listProposals, listPlanForRange, getMeal } from "@/lib/meals";
 import type { Meal, MealSlot } from "@/lib/meals";
 import { verseOfDay } from "@/lib/verses";
 import { toHijri } from "@/lib/hijri";
@@ -65,8 +65,7 @@ export default function FamilyHomePage() {
       if (meal) todayMeals[p.slot as MealSlot] = meal;
     }
   }
-  const nw = nextWeekStart(today);
-  const voteCount = listProposals(nw).length;
+  const voteCount = listProposals().length;
 
   const verse = verseOfDay(today);
   const settings = getAllSettings();

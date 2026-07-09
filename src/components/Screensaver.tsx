@@ -6,6 +6,10 @@ import type { EventRow, Member, MemberColor } from "@/lib/types";
 import { COLOR_CLASSES } from "@/lib/types";
 import type { WeatherSnapshot } from "@/lib/weather";
 
+// If someone interacts during quiet hours, keep the display awake for this long
+// after their last touch before the quiet-hours blackout returns.
+const QUIET_WAKE_SECONDS = 5 * 60;
+
 function parseHM(hm: string): { h: number; m: number } {
   const [h, m] = hm.split(":").map((s) => parseInt(s, 10));
   return { h: h || 0, m: m || 0 };
@@ -75,7 +79,10 @@ export function Screensaver({
       const idle = (Date.now() - lastActivityRef.current) / 1000;
       const now = new Date();
       const quiet = inQuietWindow(now, quietStart, quietEnd);
-      const shouldActivate = quiet || idle >= idleSeconds;
+      // During quiet hours a recent interaction suspends the blackout for
+      // QUIET_WAKE_SECONDS from the last touch; otherwise the normal idle
+      // timeout applies.
+      const shouldActivate = quiet ? idle >= QUIET_WAKE_SECONDS : idle >= idleSeconds;
       if (shouldActivate !== active) setActive(shouldActivate);
     }, 5000);
     return () => clearInterval(check);
@@ -133,6 +140,41 @@ export function Screensaver({
           )}
         </div>
       ) : null}
+
+      {!inQuiet && weather && (weather.hourly.length > 0 || weather.forecast.length > 0) && (
+        <div className="mt-12 w-full max-w-6xl px-8 space-y-8">
+          {weather.hourly.length > 0 && (
+            <div>
+              <div className="text-xs uppercase tracking-widest opacity-40 mb-3 text-center">Today, hourly</div>
+              <div className="flex justify-center gap-6">
+                {weather.hourly.map((h) => (
+                  <div key={h.time} className="flex flex-col items-center gap-1">
+                    <div className="text-sm opacity-60 tabular-nums">{format(new Date(h.time), "h a")}</div>
+                    <div className="text-3xl">{h.icon}</div>
+                    <div className="text-xl tabular-nums">{h.tempF}°</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {weather.forecast.length > 0 && (
+            <div>
+              <div className="text-xs uppercase tracking-widest opacity-40 mb-3 text-center">Next 7 days</div>
+              <div className="flex justify-center gap-8">
+                {weather.forecast.slice(0, 7).map((d, i) => (
+                  <div key={d.date} className="flex flex-col items-center gap-1">
+                    <div className="text-sm opacity-60">{i === 0 ? "Today" : format(new Date(`${d.date}T12:00:00`), "EEE")}</div>
+                    <div className="text-4xl">{d.icon}</div>
+                    <div className="text-lg tabular-nums">
+                      <span className="font-medium">{d.highF}°</span> <span className="opacity-50">{d.lowF}°</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="absolute bottom-8 text-sm opacity-40">
         {inQuiet ? "Quiet hours · Tap to wake" : "Tap anywhere to resume"}

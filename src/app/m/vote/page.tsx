@@ -1,18 +1,14 @@
 import Link from "next/link";
 import { listMembers } from "@/lib/members";
-import { listMeals, listProposals, nextWeekStart } from "@/lib/meals";
+import { listMeals, listProposals } from "@/lib/meals";
 import { MobileVote } from "@/components/MobileVote";
-import { format } from "date-fns";
-import { addDays } from "date-fns";
 
 export const dynamic = "force-dynamic";
 
 export default function MobileVotePage() {
   const members = listMembers();
   const meals = listMeals();
-  const weekStart = nextWeekStart();
-  const proposals = listProposals(weekStart);
-  const weekLabel = `${format(new Date(`${weekStart}T12:00:00`), "MMM d")} – ${format(addDays(new Date(`${weekStart}T12:00:00`), 6), "MMM d")}`;
+  const proposals = listProposals();
 
   return (
     <div className="min-h-full flex flex-col">
@@ -21,16 +17,11 @@ export default function MobileVotePage() {
           ‹
         </Link>
         <div>
-          <div className="text-xl font-semibold">🗳️ Meal vote</div>
-          <div className="text-xs opacity-70">{weekLabel}</div>
+          <div className="text-xl font-semibold">🗳️ Meal ideas</div>
+          <div className="text-xs opacity-70">Vote on shared meals · propose future dishes</div>
         </div>
       </header>
-      <MobileVote
-        weekStart={weekStart}
-        proposals={proposals}
-        meals={meals}
-        members={members}
-      />
+      <MobileVote proposals={proposals} meals={meals} members={members} />
     </div>
   );
 }

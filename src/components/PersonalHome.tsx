@@ -22,7 +22,6 @@ export function PersonalHome({
   events,
   proposals,
   meals,
-  weekStart,
   rewards,
   idleSeconds,
 }: {
@@ -36,7 +35,6 @@ export function PersonalHome({
   events: EventRow[];
   proposals: ProposalWithVotes[];
   meals: Meal[];
-  weekStart: string;
   rewards: Reward[];
   idleSeconds: number;
 }) {
@@ -204,15 +202,16 @@ export function PersonalHome({
       {/* Right column: meal voting + rewards */}
       <div className="w-[480px] shrink-0 border-l border-zinc-200 bg-white flex flex-col overflow-y-auto">
         <div className="px-6 py-5 border-b border-zinc-200">
-          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">🗳️ Vote for next week's meals</div>
-          <p className="text-sm text-zinc-500 mt-1">Tap 👍 on the meals you want.</p>
+          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">🗳️ Vote on shared meals</div>
+          <p className="text-sm text-zinc-500 mt-1">Tap 👍 on the lunch &amp; dinner ideas you want.</p>
         </div>
 
         <div className="px-4 py-3 space-y-2 border-b border-zinc-100">
-          {proposals.length === 0 ? (
-            <div className="text-sm text-zinc-400 italic p-3">No candidates yet.</div>
+          {proposals.filter((p) => p.member_id == null).length === 0 ? (
+            <div className="text-sm text-zinc-400 italic p-3">No shared ideas yet.</div>
           ) : (
             [...proposals]
+              .filter((p) => p.member_id == null)
               .sort((a, b) => b.votes.length - a.votes.length)
               .map((p) => {
                 const voted = new Set(p.votes).has(member.id);
@@ -245,18 +244,22 @@ export function PersonalHome({
 
         <details className="border-b border-zinc-100">
           <summary className="px-6 py-3 text-sm font-medium cursor-pointer active:bg-zinc-50">
-            + Suggest a meal from library
+            🥣 Suggest my breakfast
           </summary>
           <div className="p-4 grid grid-cols-2 gap-2">
             {meals
-              .filter((m) => !proposals.some((p) => p.meal_id === m.id))
+              .filter(
+                (m) =>
+                  m.slots.includes("breakfast") &&
+                  !proposals.some((p) => p.meal_id === m.id && p.slot_type === "breakfast" && p.member_id === member.id)
+              )
               .slice(0, 12)
               .map((m) => (
                 <button
                   key={m.id}
                   onClick={() =>
                     start(async () => {
-                      await proposeMealAction(m.id, weekStart);
+                      await proposeMealAction(m.id, "breakfast", member.id);
                       router.refresh();
                     })
                   }

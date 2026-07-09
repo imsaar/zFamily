@@ -8,6 +8,7 @@ export type WeatherSnapshot = {
   highF: number;
   lowF: number;
   forecast: Array<{ date: string; highF: number; lowF: number; icon: string; condition: string }>;
+  hourly: Array<{ time: string; tempF: number; icon: string; condition: string }>;
   fetchedAt: number;
 };
 
@@ -64,10 +65,11 @@ export async function getWeather(): Promise<WeatherSnapshot | null> {
   url.searchParams.set("latitude", lat);
   url.searchParams.set("longitude", lon);
   url.searchParams.set("current", "temperature_2m,weather_code");
+  url.searchParams.set("hourly", "temperature_2m,weather_code");
   url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min,weather_code");
   url.searchParams.set("temperature_unit", "fahrenheit");
   url.searchParams.set("timezone", tz);
-  url.searchParams.set("forecast_days", "5");
+  url.searchParams.set("forecast_days", "7");
 
   try {
     const res = await fetch(url, { next: { revalidate: 600 } });
@@ -75,6 +77,7 @@ export async function getWeather(): Promise<WeatherSnapshot | null> {
     const data = await res.json();
     const cur = data.current ?? {};
     const daily = data.daily ?? {};
+    const hourlyRaw = data.hourly ?? {};
     const curDesc = descCode(cur.weather_code ?? 0);
     const forecast = (daily.time ?? []).map((d: string, i: number) => {
       const c = descCode(daily.weather_code?.[i] ?? 0);
@@ -86,6 +89,19 @@ export async function getWeather(): Promise<WeatherSnapshot | null> {
         condition: c.condition,
       };
     });
+
+    // Hourly for the rest of today (the API returns times already in the
+    // requested timezone). Filter to today's date and from the current hour.
+    const today: string | undefined = daily.time?.[0];
+    const nowHour = String(cur.time ?? "").slice(0, 13); // "YYYY-MM-DDTHH"
+    const hourly = (hourlyRaw.time ?? [])
+      .map((t: string, i: number) => {
+        const c = descCode(hourlyRaw.weather_code?.[i] ?? 0);
+        return { time: t, tempF: Math.round(hourlyRaw.temperature_2m?.[i] ?? 0), icon: c.icon, condition: c.condition };
+      })
+      .filter((h: { time: string }) => today && h.time.startsWith(today) && h.time.slice(0, 13) >= nowHour)
+      .slice(0, 12);
+
     const snap: WeatherSnapshot = {
       label,
       currentTempF: Math.round(cur.temperature_2m ?? 0),
@@ -94,6 +110,7 @@ export async function getWeather(): Promise<WeatherSnapshot | null> {
       highF: forecast[0]?.highF ?? 0,
       lowF: forecast[0]?.lowF ?? 0,
       forecast,
+      hourly,
       fetchedAt: Date.now(),
     };
     cache = { data: snap, expiresAt: Date.now() + 10 * 60 * 1000, key };

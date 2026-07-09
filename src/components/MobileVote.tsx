@@ -2,95 +2,99 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import type { Meal, ProposalWithVotes } from "@/lib/meals";
+import type { Meal, MealSlot, ProposalWithVotes } from "@/lib/meals";
 import type { Member, MemberColor } from "@/lib/types";
 import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
-import {
-  applyWinnersAction,
-  proposeMealAction,
-  removeProposalAction,
-  toggleVoteAction,
-} from "@/app/actions";
+import { proposeMealAction, removeProposalAction, toggleVoteAction } from "@/app/actions";
 import { useRequestPin } from "./PinPad";
 
+const SLOTS: Array<{ key: MealSlot; label: string; icon: string }> = [
+  { key: "breakfast", label: "Breakfast", icon: "🥣" },
+  { key: "lunch", label: "Lunch", icon: "🥪" },
+  { key: "dinner", label: "Dinner", icon: "🍽️" },
+];
+
 export function MobileVote({
-  weekStart,
   proposals,
   meals,
   members,
 }: {
-  weekStart: string;
   proposals: ProposalWithVotes[];
   meals: Meal[];
   members: Member[];
 }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
+  const memberById = new Map(members.map((m) => [m.id, m]));
 
-  const ranked = [...proposals].sort((a, b) => {
-    if (b.votes.length !== a.votes.length) return b.votes.length - a.votes.length;
-    return a.created_at - b.created_at;
-  });
-  const proposedMealIds = new Set(proposals.map((p) => p.meal_id));
-
-  const apply = () => {
-    if (!confirm("Fill next week's dinners with the top-voted meals?")) return;
-    start(async () => {
-      const r = await applyWinnersAction(weekStart, false);
-      alert(`Filled ${r.filled} dinner slot${r.filled === 1 ? "" : "s"}.`);
-      router.push("/m");
-    });
-  };
+  const shared = [...proposals]
+    .filter((p) => p.member_id == null)
+    .sort((a, b) => (b.votes.length - a.votes.length) || (a.created_at - b.created_at));
+  const personal = proposals.filter((p) => p.member_id != null);
 
   return (
     <div className="flex-1 flex flex-col">
-      <div className="flex-1 p-4 space-y-3 overflow-y-auto pb-32">
-        {ranked.length === 0 && (
-          <div className="text-center text-zinc-400 py-8 italic">
-            No candidates yet.
-            <br />
-            Tap "+ Propose a meal" to start.
-          </div>
+      <div className="flex-1 p-4 space-y-3 overflow-y-auto pb-28">
+        <p className="text-sm text-zinc-500">
+          Future meal ideas — lunch &amp; dinner are shared, so vote below. Breakfast is each person&apos;s own pick. A
+          parent places the winners onto the plan.
+        </p>
+
+        <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Shared · lunch &amp; dinner</div>
+        {shared.length === 0 && (
+          <div className="text-center text-zinc-400 py-4 italic">No shared ideas yet.</div>
         )}
-        {ranked.map((p, i) => (
-          <MobileProposalCard
-            key={p.id}
-            proposal={p}
-            rank={i}
-            members={members}
-            pending={pending}
-          />
+        {shared.map((p, i) => (
+          <MobileProposalCard key={p.id} proposal={p} rank={i} members={members} />
         ))}
+
+        {personal.length > 0 && (
+          <>
+            <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold pt-2">Personal breakfasts</div>
+            {personal.map((p) => {
+              const who = p.member_id != null ? memberById.get(p.member_id) : null;
+              return (
+                <div key={p.id} className="bg-white border border-zinc-200 rounded-2xl p-3 flex items-center gap-3">
+                  <div className="text-3xl">{p.meal.icon}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium truncate">{p.meal.name}</div>
+                    <div className="text-xs text-zinc-500">{who ? `${who.name}'s pick` : "personal"}</div>
+                  </div>
+                  <RemoveButton id={p.id} />
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
-      <div className="p-4 border-t border-zinc-200 bg-white space-y-2 fixed bottom-0 left-0 right-0">
+      <div className="p-4 border-t border-zinc-200 bg-white fixed bottom-0 left-0 right-0">
         <button
           onClick={() => setAdding(true)}
           className="w-full py-3 rounded-xl border-2 border-dashed border-zinc-300 text-zinc-700 font-medium"
         >
-          + Propose a meal
+          + Propose a dish
         </button>
-        {ranked.length > 0 && (
-          <button
-            onClick={apply}
-            disabled={pending}
-            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-medium disabled:opacity-40"
-          >
-            🍽️ Apply top {Math.min(ranked.length, 7)} to plan
-          </button>
-        )}
       </div>
 
       {adding && (
-        <MobileProposeSheet
-          meals={meals}
-          weekStart={weekStart}
-          alreadyProposed={proposedMealIds}
-          onClose={() => setAdding(false)}
-        />
+        <MobileProposeSheet meals={meals} members={members} proposals={proposals} onClose={() => setAdding(false)} />
       )}
     </div>
+  );
+}
+
+function RemoveButton({ id }: { id: number }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <button
+      onClick={() => start(async () => { await removeProposalAction(id); router.refresh(); })}
+      disabled={pending}
+      aria-label="Remove idea"
+      className="w-9 h-9 text-zinc-300 text-xl"
+    >
+      ×
+    </button>
   );
 }
 
@@ -98,15 +102,13 @@ function MobileProposalCard({
   proposal,
   rank,
   members,
-  pending,
 }: {
   proposal: ProposalWithVotes;
   rank: number;
   members: Member[];
-  pending: boolean;
 }) {
   const router = useRouter();
-  const [voting, start] = useTransition();
+  const [voting] = useTransition();
   const requestPin = useRequestPin();
   const voters = new Set(proposal.votes);
   const medal = rank === 0 ? "🥇" : rank === 1 ? "🥈" : rank === 2 ? "🥉" : null;
@@ -125,18 +127,7 @@ function MobileProposalCard({
             {proposal.votes.length} vote{proposal.votes.length === 1 ? "" : "s"}
           </div>
         </div>
-        <button
-          onClick={() =>
-            start(async () => {
-              await removeProposalAction(proposal.id);
-              router.refresh();
-            })
-          }
-          disabled={pending || voting}
-          className="w-9 h-9 text-zinc-300 text-xl"
-        >
-          ×
-        </button>
+        <RemoveButton id={proposal.id} />
       </div>
       <div className="grid grid-cols-4 gap-2">
         {members.map((m) => {
@@ -151,7 +142,7 @@ function MobileProposalCard({
                 });
                 if (ok) router.refresh();
               }}
-              disabled={pending || voting}
+              disabled={voting}
               className={`flex flex-col items-center py-2 rounded-xl transition-all ${
                 voted ? `${color.bg} text-white` : `${color.bgSoft} ${color.text} opacity-50 grayscale`
               }`}
@@ -168,28 +159,38 @@ function MobileProposalCard({
 
 function MobileProposeSheet({
   meals,
-  weekStart,
-  alreadyProposed,
+  members,
+  proposals,
   onClose,
 }: {
   meals: Meal[];
-  weekStart: string;
-  alreadyProposed: Set<number>;
+  members: Member[];
+  proposals: ProposalWithVotes[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [slot, setSlot] = useState<MealSlot>("dinner");
+  const [who, setWho] = useState<number | null>(members[0]?.id ?? null);
   const [filter, setFilter] = useState<"favorites" | "all">("favorites");
 
-  const favorites = meals.filter((m) => m.is_favorite && !alreadyProposed.has(m.id));
-  const others = meals.filter((m) => !m.is_favorite && !alreadyProposed.has(m.id));
-  const shown = filter === "favorites"
-    ? (favorites.length > 0 ? favorites : others)
-    : [...favorites, ...others];
+  const personal = slot === "breakfast";
+  const memberId = personal ? who : null;
+
+  const already = new Set(
+    proposals
+      .filter((p) => p.slot_type === slot && (p.member_id ?? null) === (memberId ?? null))
+      .map((p) => p.meal_id)
+  );
+  const eligible = meals.filter((m) => m.slots.includes(slot) && !already.has(m.id));
+  const favorites = eligible.filter((m) => m.is_favorite);
+  const others = eligible.filter((m) => !m.is_favorite);
+  const shown = filter === "favorites" ? (favorites.length > 0 ? favorites : others) : [...favorites, ...others];
 
   const propose = (mealId: number) => {
+    if (personal && memberId == null) return;
     start(async () => {
-      await proposeMealAction(mealId, weekStart);
+      await proposeMealAction(mealId, slot, memberId);
       router.refresh();
       onClose();
     });
@@ -201,10 +202,47 @@ function MobileProposeSheet({
         className="bg-white w-full rounded-t-3xl p-4 max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between mb-4">
-          <div className="text-lg font-semibold">Propose a meal</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-lg font-semibold">Propose a dish</div>
           <button onClick={onClose} className="w-10 h-10 rounded-full text-2xl">×</button>
         </div>
+
+        <div className="flex gap-2 mb-2">
+          {SLOTS.map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setSlot(s.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-full border-2 text-sm ${
+                slot === s.key ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-700"
+              }`}
+            >
+              <span>{s.icon}</span>
+              <span>{s.label}</span>
+            </button>
+          ))}
+        </div>
+
+        {personal && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {members.map((m) => {
+              const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
+              const sel = who === m.id;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setWho(m.id)}
+                  className={`flex items-center gap-1.5 px-3 py-2 rounded-full border-2 text-sm ${
+                    sel ? `${color.bg} ${color.border} text-white` : "border-zinc-200"
+                  }`}
+                >
+                  <span>{memberGlyph(m)}</span>
+                  <span>{m.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className="flex gap-2 mb-3">
           <button
             onClick={() => setFilter("favorites")}
@@ -219,16 +257,17 @@ function MobileProposeSheet({
             All ({favorites.length + others.length})
           </button>
         </div>
+
         <div className="flex-1 overflow-y-auto space-y-2">
           {shown.length === 0 ? (
-            <div className="text-center text-zinc-400 py-8 italic">All meals are candidates.</div>
+            <div className="text-center text-zinc-400 py-8 italic">No dishes to propose.</div>
           ) : (
             shown.map((m) => (
               <button
                 key={m.id}
                 onClick={() => propose(m.id)}
-                disabled={pending}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-left"
+                disabled={pending || (personal && memberId == null)}
+                className="w-full flex items-center gap-3 p-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-left disabled:opacity-40"
               >
                 <div className="text-3xl">{m.icon}</div>
                 <div className="min-w-0 flex-1">

@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS chores (
   points       INTEGER NOT NULL DEFAULT 1,
   recurrence   TEXT NOT NULL,
   active       INTEGER NOT NULL DEFAULT 1,
+  shared       INTEGER NOT NULL DEFAULT 0,  -- 1 = common chore, doable by anyone (no assignees)
   created_at   INTEGER NOT NULL
 );
 
@@ -131,11 +132,10 @@ CREATE TABLE IF NOT EXISTS meals (
 CREATE TABLE IF NOT EXISTS meal_proposals (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
   meal_id      INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
-  week_start   TEXT NOT NULL,   -- YYYY-MM-DD (Sunday) of the target week
-  created_at   INTEGER NOT NULL,
-  UNIQUE(meal_id, week_start)
+  slot_type    TEXT NOT NULL,   -- breakfast | lunch | dinner (the future idea's meal-type)
+  member_id    INTEGER REFERENCES members(id) ON DELETE SET NULL,  -- proposer for a personal breakfast; NULL for shared lunch/dinner
+  created_at   INTEGER NOT NULL
 );
-CREATE INDEX IF NOT EXISTS meal_proposals_week ON meal_proposals(week_start);
 
 CREATE TABLE IF NOT EXISTS meal_votes (
   id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,6 +190,7 @@ function migrate(conn: Database.Database) {
   ensureColumn(conn, "meals", "is_favorite", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(conn, "meals", "slots", "TEXT");
   ensureColumn(conn, "members", "role", "TEXT NOT NULL DEFAULT 'parent'");
+  ensureColumn(conn, "chores", "shared", "INTEGER NOT NULL DEFAULT 0");
   ensureColumn(conn, "chore_completions", "verified_at", "INTEGER");
   ensureColumn(conn, "chore_completions", "verified_by", "INTEGER REFERENCES members(id) ON DELETE SET NULL");
   ensureColumn(conn, "members", "pin_hash", "TEXT");
@@ -198,7 +199,40 @@ function migrate(conn: Database.Database) {
   ensureColumn(conn, "members", "photo_updated_at", "INTEGER");
   // Index needs the columns above to exist first.
   conn.exec("CREATE INDEX IF NOT EXISTS comp_pending ON chore_completions(verified_at) WHERE verified_at IS NULL");
+  migrateProposals(conn);
+  // Index after the proposals table is in its final (slot_type) shape.
+  conn.exec("CREATE INDEX IF NOT EXISTS meal_proposals_slot ON meal_proposals(slot_type)");
   seedStarterContent(conn);
+}
+
+// Meal proposals moved from week-bound dinner candidates to a future idea pool
+// tagged by slot_type (+ proposer for personal breakfasts). Rebuild the table
+// on existing installs, carrying old proposals over as shared dinner ideas.
+function migrateProposals(conn: Database.Database) {
+  const cols = conn.prepare("PRAGMA table_info(meal_proposals)").all() as Array<{ name: string }>;
+  if (cols.length === 0) return; // table not created yet (fresh install handles via SCHEMA)
+  const hasWeekStart = cols.some((c) => c.name === "week_start");
+  const hasSlotType = cols.some((c) => c.name === "slot_type");
+  if (!hasWeekStart || hasSlotType) return; // already migrated
+  conn.pragma("foreign_keys = OFF");
+  try {
+    const rebuild = conn.transaction(() => {
+      conn.exec(`CREATE TABLE meal_proposals_new (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        meal_id      INTEGER NOT NULL REFERENCES meals(id) ON DELETE CASCADE,
+        slot_type    TEXT NOT NULL,
+        member_id    INTEGER REFERENCES members(id) ON DELETE SET NULL,
+        created_at   INTEGER NOT NULL
+      );`);
+      conn.exec(`INSERT INTO meal_proposals_new (id, meal_id, slot_type, member_id, created_at)
+                 SELECT id, meal_id, 'dinner', NULL, created_at FROM meal_proposals;`);
+      conn.exec("DROP TABLE meal_proposals;");
+      conn.exec("ALTER TABLE meal_proposals_new RENAME TO meal_proposals;");
+    });
+    rebuild();
+  } finally {
+    conn.pragma("foreign_keys = ON");
+  }
 }
 
 // All domain tables, ordered so that a plain DELETE sweep is easy to reason

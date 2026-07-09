@@ -168,11 +168,11 @@ export function OnScreenKeyboard() {
       {open && (
         <div
           onPointerDown={keepFocus}
-          className="fixed inset-x-0 bottom-0 z-[70] bg-zinc-100 border-t border-zinc-300 shadow-[0_-8px_24px_rgba(0,0,0,0.15)] px-2 pt-2 pb-3 select-none"
+          className="fixed inset-x-0 bottom-0 z-[70] bg-zinc-100 border-t border-zinc-300 shadow-[0_-8px_24px_rgba(0,0,0,0.15)] px-2 pt-2 pb-3 md:px-4 md:pt-3 md:pb-5 select-none"
         >
-          <div className="max-w-4xl mx-auto space-y-1.5">
+          <div className="max-w-4xl lg:max-w-6xl 2xl:max-w-7xl mx-auto space-y-1.5 md:space-y-2.5">
             {rows.map((row, ri) => (
-              <div key={ri} className="flex justify-center gap-1.5">
+              <div key={ri} className="flex justify-center gap-1.5 md:gap-2.5">
                 {ri === 2 && !symbols && (
                   <Key label={shift ? "⇧" : "⇧"} wide onPress={() => setShift((s) => !s)} active={shift} />
                 )}
@@ -185,14 +185,14 @@ export function OnScreenKeyboard() {
                 )}
               </div>
             ))}
-            <div className="flex justify-center gap-1.5">
+            <div className="flex justify-center gap-1.5 md:gap-2.5">
               <Key label={symbols ? "ABC" : "123"} wide onPress={() => { setSymbols((s) => !s); setShift(false); }} />
               <Key label="space" flex onPress={() => insert(" ")} />
               {!symbols && <Key label="." onPress={() => insert(".")} />}
               <button
                 type="button"
                 onPointerDown={(e) => { keepFocus(e); setOpen(false); }}
-                className="h-12 px-5 rounded-xl bg-zinc-900 text-white font-medium active:scale-95"
+                className="h-12 md:h-16 lg:h-[4.5rem] px-5 md:px-8 rounded-xl bg-zinc-900 text-white font-medium text-lg md:text-2xl active:scale-95"
               >
                 Done
               </button>
@@ -221,8 +221,8 @@ function Key({
     <button
       type="button"
       onPointerDown={(e) => { e.preventDefault(); onPress(); }}
-      className={`h-12 rounded-xl text-lg font-medium flex items-center justify-center active:scale-95 transition-transform ${
-        flex ? "flex-1" : wide ? "px-4 min-w-14" : "w-9 sm:w-10 md:w-12"
+      className={`h-12 md:h-16 lg:h-[4.5rem] rounded-xl md:rounded-2xl text-lg md:text-2xl lg:text-3xl font-medium flex items-center justify-center active:scale-95 transition-transform ${
+        flex ? "flex-1" : wide ? "px-4 md:px-6 min-w-14 md:min-w-24" : "w-9 sm:w-11 md:w-16 lg:w-[4.75rem]"
       } ${active ? "bg-zinc-900 text-white" : "bg-white text-zinc-800 shadow-sm active:bg-zinc-200"}`}
     >
       {label}

@@ -3,7 +3,7 @@ import { getMember, listMembers } from "@/lib/members";
 import { listChores, getCompletions, isDueOn, streakFor, eligibleVerifiers } from "@/lib/chores";
 import { pointsBalance, listRewards } from "@/lib/rewards";
 import { listEventsInRange } from "@/lib/events";
-import { listProposals, nextWeekStart, listMeals } from "@/lib/meals";
+import { listProposals, listMeals } from "@/lib/meals";
 import { getAllSettings } from "@/lib/settings";
 import { PersonalHome } from "@/components/PersonalHome";
 import { addDays } from "date-fns";
@@ -31,8 +31,7 @@ export default async function PersonalHomePage({ params }: { params: Promise<{ m
   const allEvents = listEventsInRange(rangeStart, rangeEnd);
   const myEvents = allEvents.filter((e) => e.member_id === id).sort((a, b) => a.start_ts - b.start_ts).slice(0, 10);
 
-  const nw = nextWeekStart(today);
-  const proposals = listProposals(nw);
+  const proposals = listProposals();
   const meals = listMeals();
   const allMembers = listMembers();
   const rewards = listRewards(true);
@@ -52,7 +51,6 @@ export default async function PersonalHomePage({ params }: { params: Promise<{ m
       events={myEvents}
       proposals={proposals}
       meals={meals}
-      weekStart={nw}
       rewards={rewards}
       idleSeconds={idleSeconds}
     />

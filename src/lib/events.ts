@@ -64,14 +64,20 @@ export function createLocalEvent(input: {
   all_day?: boolean;
   location?: string;
   notes?: string;
-  recurrence?: "none" | "weekly" | "monthly" | "quarterly" | null;
+  recurrence?: "none" | "daily" | "weekdays" | "weekly" | "monthly" | null;
+  // For weekly/monthly: repeat every N weeks/months. The weekday (weekly) and
+  // day-of-month (monthly) come from the event's start date.
+  interval?: number;
 }): string {
   const id = `local-${crypto.randomUUID()}`;
+  const iv = Math.max(1, Math.round(input.interval ?? 1));
+  const ivPart = iv > 1 ? `;INTERVAL=${iv}` : "";
   let rrule: string | null = null;
   switch (input.recurrence) {
-    case "weekly":    rrule = "FREQ=WEEKLY"; break;
-    case "monthly":   rrule = "FREQ=MONTHLY"; break;
-    case "quarterly": rrule = "FREQ=MONTHLY;INTERVAL=3"; break;
+    case "daily":     rrule = "FREQ=DAILY"; break;
+    case "weekdays":  rrule = "FREQ=DAILY;BYDAY=MO,TU,WE,TH,FR"; break;
+    case "weekly":    rrule = `FREQ=WEEKLY${ivPart}`; break;
+    case "monthly":   rrule = `FREQ=MONTHLY${ivPart}`; break;
     default:          rrule = null;
   }
   upsertEvent({
@@ -107,7 +113,10 @@ export function expandRecurrences(events: EventRow[], startTs: number, endTs: nu
     let cursor = e.start_ts;
     let count = 0;
     while (cursor <= endTs && count < maxPerEvent) {
-      if (cursor + duration >= startTs) {
+      // BYDAY (e.g. weekdays) filters which occurrences count; we still advance
+      // daily and skip days not in the set.
+      const inByDay = !rule.byDays || rule.byDays.has(new Date(cursor * 1000).getDay());
+      if (inByDay && cursor + duration >= startTs) {
         out.push({ ...e, id: `${e.id}::${cursor}`, start_ts: cursor, end_ts: cursor + duration });
       }
       cursor = advance(cursor, rule);
@@ -117,7 +126,10 @@ export function expandRecurrences(events: EventRow[], startTs: number, endTs: nu
   return out;
 }
 
-type ParsedRRule = { freq: "WEEKLY" | "MONTHLY" | "DAILY" | "YEARLY"; interval: number };
+type ParsedRRule = { freq: "WEEKLY" | "MONTHLY" | "DAILY" | "YEARLY"; interval: number; byDays?: Set<number> };
+
+// RRULE weekday codes → JS getDay() index (Sun=0 … Sat=6).
+const BYDAY_TO_DOW: Record<string, number> = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
 
 function parseRRule(s: string): ParsedRRule | null {
   const parts: Record<string, string> = {};
@@ -128,7 +140,12 @@ function parseRRule(s: string): ParsedRRule | null {
   const freq = parts["FREQ"];
   if (!freq || !["WEEKLY", "MONTHLY", "DAILY", "YEARLY"].includes(freq)) return null;
   const interval = Number(parts["INTERVAL"] ?? "1") || 1;
-  return { freq: freq as ParsedRRule["freq"], interval };
+  let byDays: Set<number> | undefined;
+  if (parts["BYDAY"]) {
+    const days = parts["BYDAY"].split(",").map((c) => BYDAY_TO_DOW[c]).filter((n) => n !== undefined);
+    if (days.length) byDays = new Set(days);
+  }
+  return { freq: freq as ParsedRRule["freq"], interval, byDays };
 }
 
 function advance(ts: number, rule: ParsedRRule): number {

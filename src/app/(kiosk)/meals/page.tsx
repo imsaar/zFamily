@@ -1,5 +1,5 @@
 import { MealsView } from "@/components/MealsView";
-import { listMeals, listPlanForRange, listShoppingItems, listProposals, nextWeekStart } from "@/lib/meals";
+import { listMeals, listPlanForRange, listShoppingItems, listProposals } from "@/lib/meals";
 import { listMembers } from "@/lib/members";
 import { weekDays, parseDateParam } from "@/lib/dates";
 import { format } from "date-fns";
@@ -19,8 +19,7 @@ export default async function MealsPage({ searchParams }: { searchParams: Search
   const plan = listPlanForRange(startStr, endStr);
   const shopping = listShoppingItems();
   const members = listMembers();
-  const nextWeek = nextWeekStart();
-  const proposals = listProposals(nextWeek);
+  const proposals = listProposals();
 
   return (
     <MealsView
@@ -30,7 +29,6 @@ export default async function MealsPage({ searchParams }: { searchParams: Search
       plan={plan}
       shopping={shopping}
       members={members}
-      nextWeek={nextWeek}
       proposals={proposals}
     />
   );

@@ -30,20 +30,21 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 
 - **Family home dashboard** with Quranic verse of the day (Arabic + English translation, deterministic per date), Hijri (Umm al-Qura) date with moon-sighting correction, weekly overview, today's breakfast/lunch/dinner panel, and quick tiles.
 - **Weekly + monthly calendar** with per-member color coding, all-day strip, hourly grid, red "now" line.
-- **Recurring events** — locally-created events support weekly, monthly, or quarterly recurrence (client-expanded from RRULE).
-- **Chore board** with pending → verified two-step (parents verify children; parents peer-verify each other), big touch check-off circles, daily/weekly/weekend recurrence, points, streaks (🔥), weekly progress bars. A **chore library** of common household chores (empty the dishwasher, take garbage to curb every Sunday, clean the kitchen…) pre-fills the editor so you just assign who does it.
+- **Recurring events** — locally-created events support daily, weekdays, weekly, monthly, or quarterly recurrence (client-expanded from RRULE).
+- **Chore board** with pending → verified two-step (parents verify children; parents peer-verify each other), big touch check-off circles, daily/weekly/weekend recurrence, points, streaks (🔥), weekly progress bars. A **chore library** of common household chores (empty the dishwasher, take garbage to curb every Sunday, clean the kitchen…) pre-fills the editor so you just assign who does it. **Common chores** can be marked doable-by-anyone — the first person to do it completes it for everyone that period, and you pick who did it.
 - **Gamification** — every verified chore earns points; parent-approved rewards shelf lets kids spend points on real rewards.
-- **Meal planner + family voting** — weekly breakfast/lunch/dinner grid, meal library with ingredients (quantity + unit), favorites (❤️), weekly vote (medals for winners) with one-tap "apply top winners to next week's dinners". Each meal is marked eligible for breakfast/lunch/dinner, so the slot picker only offers meals that fit — and you can filter the list by an ingredient you already have.
-- **Shopping list** — planned meals add their ingredients (you choose which ones), shared with the mobile companion.
-- **Emoji/icon picker** — a curated tap-to-choose icon grid everywhere an icon is set (members, chores, rewards, meals), with a "type your own" box for any emoji.
+- **Meal planner** — weekly breakfast/lunch/dinner grid, meal library with ingredients (quantity + unit), favorites (❤️). Each meal is marked eligible for breakfast/lunch/dinner so the slot picker only offers meals that fit, and you can filter the list by an ingredient you already have.
+- **Meal ideas (proposals)** — a future wishlist of dishes, not tied to a date. **Lunch & dinner are shared** and the family votes (medals for the favorites); **breakfast is each person's own pick**. Nothing auto-fills — proposed dishes show up in the day's slot picker for a parent to place.
+- **Shopping list** — when a meal is placed on the plan you choose which of its ingredients get added (starts unselected), shared with the mobile companion.
+- **Emoji/icon picker** — a curated tap-to-choose icon grid everywhere an icon is set (members, chores, rewards, meals), with a "type your own" box for any emoji. A member's chosen icon (or a neutral person glyph) is their avatar until a headshot is uploaded.
 - **On-screen keyboard** (optional, Settings → Display) — a touch QWERTY that surfaces on a ⌨️ button when a text field is focused, for kiosks with no physical keyboard.
 - **Quran verse context** — tap the verse-of-the-day reference to open the ayah in an in-app tanzil.net reader (Ali Quli Qarai translation); long verses are clamped with a "read the full ayah" link. Stays inside the app — no external browser window on the locked kiosk.
-- **PIN authentication** — 4-digit PIN per member with on-screen numeric keypad. Required for personal actions (verify/vote/redeem) and admin actions (settings/rewards/chores/family). First-launch gate forces parents to set a PIN.
+- **PIN authentication** — 4-digit PIN per member with on-screen numeric keypad. Opening **Settings** unlocks once with a parent PIN, then saves don't re-prompt until you leave; chore verification still asks each time; adding a meal needs no PIN. Parents can reset a child's PIN without knowing the current one. First-launch gate forces parents to set a PIN.
 - **Personal views** at `/me/[memberId]` — each member has their own screen with their chores, schedule, meal vote panel, and rewards. Reverts to family home after configurable idle (default 2 min).
 - **Weather** via Open-Meteo (no API key), with **city/state search** that auto-fills coordinates and IANA timezone in one tap. Header widget + screensaver display.
 - **Google Calendar sync** per family member with incremental sync tokens.
 - **iCal calendar subscriptions** — subscribe to any read-only iCal/`webcal` URL (e.g. a Google "secret address in iCal format"); recurrences are expanded and refreshed on a per-feed interval.
-- **Screensaver** with quiet-hour schedule, clock + next event + weather, tap-to-wake.
+- **Screensaver** with quiet-hour schedule, clock + next event + weather, tap-to-wake. Interacting during quiet hours suspends the blackout for 5 minutes from your last touch.
 - **Mobile companion PWA** at `/m` — quick chore check-off, event add, meal voting, and shopping list from any phone.
 - **Playwright end-to-end tests** covering critical flows (PIN gates, weather save + header refresh, chore verify, home meal panel).
 
@@ -197,17 +198,28 @@ installs or to also pull OAuth-linked Google accounts.
 
 ### 7. Updating to a new version
 
-Pull the latest code, reinstall/rebuild, and restart the service. Your data lives in `ZFAMILY_DATA_DIR` (`/var/lib/zfamily`), **not** in the app directory, so updates never touch the database — schema migrations run automatically on the next boot.
+Your data lives in `ZFAMILY_DATA_DIR` (`/var/lib/zfamily`), **not** in the app directory, so updates never touch the database — schema migrations run automatically on the next boot.
+
+**One command** (bundled script — pulls, installs, builds, restarts):
 
 ```bash
 cd /opt/zfamily
-sudo systemctl stop zfamily        # optional; stops it briefly for a clean swap
+npm run update              # or: ./scripts/update.sh
+```
+
+Useful flags: `BRANCH=main npm run update` to switch branch, `NO_RESTART=1` to build without restarting, `RELOAD_KIOSK=1` to also hard-reload the Chromium tab, `SERVICE=<name>` if your unit isn't `zfamily`.
+
+<details><summary>Equivalent manual steps</summary>
+
+```bash
+cd /opt/zfamily
 git pull                           # or: git fetch && git checkout <tag/branch>
 npm install                        # picks up any new/updated dependencies
 npm run build                      # Turbopack production build + full type-check
-sudo systemctl restart zfamily     # (start, if you stopped it above)
+sudo systemctl restart zfamily     # restart the server
 sudo systemctl status zfamily      # confirm it came back healthy
 ```
+</details>
 
 Then reload the kiosk display so the browser picks up the new assets (favicon, icons, JS):
 
@@ -427,7 +439,7 @@ Modes:
 - **Clock only** — huge clock, date, and a "tap to wake" hint.
 - **Clock + next** — adds the next upcoming event and the current weather.
 
-Tap anywhere to dismiss. During quiet hours the display is fully black to reduce room-light pollution.
+Tap anywhere to dismiss. During quiet hours the display is fully black to reduce room-light pollution — but if someone interacts, the blackout is **suspended for 5 minutes** from their last touch (so a late-night check-in doesn't fight the screensaver) before it returns.
 
 ## Testing
 

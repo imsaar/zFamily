@@ -22,7 +22,6 @@ import {
   proposeMealAction,
   removeProposalAction,
   toggleVoteAction,
-  applyWinnersAction,
 } from "@/app/actions";
 import { useRequestPin } from "./PinPad";
 import { useAdminAuth } from "./AdminGate";
@@ -56,7 +55,6 @@ export function MealsView({
   plan,
   shopping,
   members,
-  nextWeek,
   proposals,
 }: {
   days: Date[];
@@ -65,7 +63,6 @@ export function MealsView({
   plan: PlanEntry[];
   shopping: ShoppingItem[];
   members: Member[];
-  nextWeek: string;
   proposals: ProposalWithVotes[];
 }) {
   const [picker, setPicker] = useState<{ date: string; slot: MealSlot } | null>(null);
@@ -98,7 +95,7 @@ export function MealsView({
               onClick={() => setVoting(true)}
               className="px-4 h-12 rounded-full border border-zinc-200 flex items-center gap-2 text-base active:bg-zinc-100 relative"
             >
-              🗳️ Vote next week
+              🗳️ Meal ideas
               {proposals.length > 0 && (
                 <span className="ml-1 min-w-6 h-6 px-1.5 rounded-full bg-zinc-900 text-white text-xs flex items-center justify-center tabular-nums">
                   {proposals.length}
@@ -164,14 +161,15 @@ export function MealsView({
           date={picker.date}
           slot={picker.slot}
           meals={meals}
+          members={members}
+          proposals={proposals.filter((p) => p.slot_type === picker.slot)}
           current={planByKey.get(`${picker.date}:${picker.slot}`)}
           onClose={() => setPicker(null)}
         />
       )}
       {library && <MealLibrary meals={meals} onClose={() => setLibrary(false)} />}
       {voting && (
-        <VotingSheet
-          weekStart={nextWeek}
+        <IdeasSheet
           proposals={proposals}
           meals={meals}
           members={members}
@@ -322,12 +320,16 @@ function MealPicker({
   date,
   slot,
   meals,
+  members,
+  proposals,
   current,
   onClose,
 }: {
   date: string;
   slot: MealSlot;
   meals: Meal[];
+  members: Member[];
+  proposals: ProposalWithVotes[];
   current: Meal | undefined;
   onClose: () => void;
 }) {
@@ -384,7 +386,8 @@ function MealPicker({
 
   const openConfirm = (m: Meal) => {
     setChosen(m);
-    setSelectedIdx(new Set(m.ingredients.map((_, i) => i)));
+    // Start with nothing selected — the user opts ingredients in (or taps "All").
+    setSelectedIdx(new Set());
   };
 
   const confirm = () => {
@@ -477,10 +480,41 @@ function MealPicker({
     );
   }
 
+  // Proposed dishes for this meal-type — parents can place one straight onto
+  // the slot. Shared (lunch/dinner) sorted by votes; breakfast shows whose.
+  const memberById = new Map(members.map((m) => [m.id, m]));
+  const proposedForSlot = [...proposals].sort((a, b) => b.votes.length - a.votes.length);
+
   // ── Pick step: filter by ingredient, then choose a meal ──
   return (
     <Sheet open onClose={onClose} title={`${dateLabel} · ${label}`} width="max-w-2xl">
       <div className="space-y-4">
+        {proposedForSlot.length > 0 && (
+          <div>
+            <div className="text-xs uppercase tracking-wider text-zinc-400 mb-2">💡 Proposed for {label.toLowerCase()}</div>
+            <div className="grid grid-cols-2 gap-3">
+              {proposedForSlot.map((p) => {
+                const who = p.member_id != null ? memberById.get(p.member_id) : null;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => openConfirm(p.meal)}
+                    disabled={pending}
+                    className="flex items-center gap-3 p-3 rounded-xl border-2 border-amber-200 bg-amber-50/40 hover:bg-amber-50 text-left"
+                  >
+                    <div className="text-3xl shrink-0">{p.meal.icon}</div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{p.meal.name}</div>
+                      <div className="text-xs text-zinc-500">
+                        {who ? `${who.name}'s pick` : `${p.votes.length} vote${p.votes.length === 1 ? "" : "s"}`}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div>
           <button
             onClick={() => setShowFilter((v) => !v)}
@@ -691,14 +725,12 @@ function MealLibrary({ meals, onClose }: { meals: Meal[]; onClose: () => void })
   );
 }
 
-function VotingSheet({
-  weekStart,
+function IdeasSheet({
   proposals,
   meals,
   members,
   onClose,
 }: {
-  weekStart: string;
   proposals: ProposalWithVotes[];
   meals: Meal[];
   members: Member[];
@@ -707,104 +739,65 @@ function VotingSheet({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
-  const [confirmApply, setConfirmApply] = useState(false);
-
   const memberById = new Map(members.map((m) => [m.id, m]));
-  const ranked = [...proposals].sort((a, b) => {
-    if (b.votes.length !== a.votes.length) return b.votes.length - a.votes.length;
-    return a.created_at - b.created_at;
-  });
 
-  const proposedMealIds = new Set(proposals.map((p) => p.meal_id));
-  const weekLabel = `${format(new Date(`${weekStart}T12:00:00`), "MMM d")} – ${format(addWeeks(new Date(`${weekStart}T12:00:00`), 1), "MMM d")}`;
-
-  const apply = () => {
+  const remove = (id: number) =>
     start(async () => {
-      const r = await applyWinnersAction(weekStart, false);
-      alert(`Filled ${r.filled} dinner slot${r.filled === 1 ? "" : "s"} for next week.`);
+      await removeProposalAction(id);
       router.refresh();
-      onClose();
     });
-  };
+
+  const groups: Array<{ slot: MealSlot; label: string; shared: boolean }> = [
+    { slot: "breakfast", label: "🥣 Breakfast · personal", shared: false },
+    { slot: "lunch", label: "🥪 Lunch · shared", shared: true },
+    { slot: "dinner", label: "🍽️ Dinner · shared", shared: true },
+  ];
 
   return (
-    <Sheet open onClose={onClose} title={`Vote for next week · ${weekLabel}`} width="max-w-3xl">
-      <div className="space-y-4">
-        {ranked.length === 0 ? (
-          <div className="text-center py-8 text-zinc-500 italic">
-            No candidates yet — tap "+ Propose a meal" below to start.
-          </div>
-        ) : (
-          <ul className="space-y-2">
-            {ranked.map((p, i) => (
-              <ProposalRow
-                key={p.id}
-                proposal={p}
-                rank={i}
-                members={members}
-                memberById={memberById}
-                onRemove={() =>
-                  start(async () => {
-                    await removeProposalAction(p.id);
-                    router.refresh();
-                  })
-                }
-                pending={pending}
-              />
-            ))}
-          </ul>
-        )}
-
-        <div className="flex gap-3 pt-2">
-          <button
-            onClick={() => setAdding(true)}
-            className="flex-1 py-3 rounded-xl border-2 border-dashed border-zinc-300 text-zinc-700 font-medium active:bg-zinc-50"
-          >
-            + Propose a meal
-          </button>
-          {ranked.length > 0 && (
-            <button
-              onClick={() => setConfirmApply(true)}
-              disabled={pending}
-              className="px-6 py-3 rounded-xl bg-emerald-600 text-white font-medium active:bg-emerald-700 disabled:opacity-40"
-            >
-              🍽️ Apply top {Math.min(ranked.length, 7)} to plan
-            </button>
-          )}
-        </div>
-      </div>
-
-      {adding && (
-        <ProposeSheet
-          meals={meals}
-          weekStart={weekStart}
-          alreadyProposed={proposedMealIds}
-          onClose={() => setAdding(false)}
-        />
-      )}
-      {confirmApply && (
-        <Sheet open onClose={() => setConfirmApply(false)} title="Apply winners?">
-          <div className="space-y-4">
-            <p className="text-zinc-700">
-              This will fill the dinner slots for next week ({weekLabel}) with the top-voted meals.
-              Slots that already have a meal planned will be skipped.
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setConfirmApply(false)} className="flex-1 py-3 rounded-xl border border-zinc-300">
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setConfirmApply(false);
-                  apply();
-                }}
-                className="flex-1 py-3 rounded-xl bg-emerald-600 text-white font-medium"
-              >
-                Apply
-              </button>
+    <Sheet open onClose={onClose} title="💡 Meal ideas" width="max-w-3xl">
+      <div className="space-y-5">
+        <p className="text-sm text-zinc-500">
+          A wishlist of dishes for the future — not tied to any day. Lunch &amp; dinner are shared and the family
+          votes; breakfast is each person&apos;s own pick. Place an idea onto the plan from a day&apos;s slot picker.
+        </p>
+        {groups.map((g) => {
+          let items = proposals.filter((p) => p.slot_type === g.slot);
+          if (g.shared) {
+            items = [...items].sort((a, b) => (b.votes.length - a.votes.length) || (a.created_at - b.created_at));
+          }
+          return (
+            <div key={g.slot}>
+              <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-2">{g.label}</div>
+              {items.length === 0 ? (
+                <div className="text-sm text-zinc-400 italic px-1 py-1">No ideas yet.</div>
+              ) : (
+                <ul className="space-y-2">
+                  {items.map((p, i) => (
+                    <ProposalRow
+                      key={p.id}
+                      proposal={p}
+                      rank={g.shared ? i : -1}
+                      shared={g.shared}
+                      members={members}
+                      memberById={memberById}
+                      onRemove={() => remove(p.id)}
+                      pending={pending}
+                    />
+                  ))}
+                </ul>
+              )}
             </div>
-          </div>
-        </Sheet>
+          );
+        })}
+        <button
+          onClick={() => setAdding(true)}
+          className="w-full py-3 rounded-xl border-2 border-dashed border-zinc-300 text-zinc-700 font-medium active:bg-zinc-50"
+        >
+          + Propose a dish
+        </button>
+      </div>
+      {adding && (
+        <ProposeSheet meals={meals} members={members} proposals={proposals} onClose={() => setAdding(false)} />
       )}
     </Sheet>
   );
@@ -813,6 +806,7 @@ function VotingSheet({
 function ProposalRow({
   proposal,
   rank,
+  shared,
   members,
   memberById,
   onRemove,
@@ -820,16 +814,18 @@ function ProposalRow({
 }: {
   proposal: ProposalWithVotes;
   rank: number;
+  shared: boolean;
   members: Member[];
   memberById: Map<number, Member>;
   onRemove: () => void;
   pending: boolean;
 }) {
   const router = useRouter();
-  const [voting, startVote] = useTransition();
+  const [voting] = useTransition();
   const requestPin = useRequestPin();
   const voters = new Set(proposal.votes);
   const medal = rank === 0 ? "🥇" : rank === 1 ? "🥈" : rank === 2 ? "🥉" : null;
+  const owner = proposal.member_id != null ? memberById.get(proposal.member_id) : null;
 
   return (
     <li className="flex items-center gap-4 p-3 rounded-2xl border border-zinc-200 bg-white">
@@ -838,43 +834,49 @@ function ProposalRow({
         <div className="flex items-center gap-2">
           {medal && <div className="text-lg">{medal}</div>}
           <div className="font-semibold truncate">{proposal.meal.name}</div>
-          {proposal.meal.is_favorite && <span className="text-sm">❤️</span>}
+          {proposal.meal.is_favorite ? <span className="text-sm">❤️</span> : null}
         </div>
         <div className="text-xs text-zinc-500">
-          {proposal.votes.length} vote{proposal.votes.length === 1 ? "" : "s"}
+          {shared
+            ? `${proposal.votes.length} vote${proposal.votes.length === 1 ? "" : "s"}`
+            : owner ? `${owner.name}'s pick` : "personal"}
         </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        {members.map((m) => {
-          const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
-          const voted = voters.has(m.id);
-          return (
-            <button
-              key={m.id}
-              onClick={async () => {
-                const ok = await requestPin(m, voted ? "Withdraw vote" : "Cast vote", async (pin) => {
-                  return await toggleVoteAction(proposal.id, m.id, !voted, pin || null);
-                });
-                if (ok) router.refresh();
-              }}
-              disabled={voting || pending}
-              aria-label={`${voted ? "Withdraw" : "Cast"} vote for ${m.name}`}
-              className={`w-11 h-11 rounded-full flex items-center justify-center text-xl transition-all ${
-                voted
-                  ? `${color.bg} text-white shadow-sm scale-105`
-                  : `${color.bgSoft} ${color.text} opacity-50 grayscale`
-              }`}
-            >
-              {memberGlyph(m)}
-            </button>
-          );
-        })}
-      </div>
+      {shared ? (
+        <div className="flex items-center gap-1.5">
+          {members.map((m) => {
+            const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
+            const voted = voters.has(m.id);
+            return (
+              <button
+                key={m.id}
+                onClick={async () => {
+                  const ok = await requestPin(m, voted ? "Withdraw vote" : "Cast vote", async (pin) => {
+                    return await toggleVoteAction(proposal.id, m.id, !voted, pin || null);
+                  });
+                  if (ok) router.refresh();
+                }}
+                disabled={voting || pending}
+                aria-label={`${voted ? "Withdraw" : "Cast"} vote for ${m.name}`}
+                className={`w-11 h-11 rounded-full flex items-center justify-center text-xl transition-all ${
+                  voted ? `${color.bg} text-white shadow-sm scale-105` : `${color.bgSoft} ${color.text} opacity-50 grayscale`
+                }`}
+              >
+                {memberGlyph(m)}
+              </button>
+            );
+          })}
+        </div>
+      ) : owner ? (
+        <div className="w-11 h-11 rounded-full flex items-center justify-center text-xl bg-zinc-100">
+          {memberGlyph(owner)}
+        </div>
+      ) : null}
       <button
         onClick={onRemove}
         disabled={pending}
         className="w-9 h-9 text-zinc-300 hover:text-red-500 text-xl"
-        aria-label="Remove candidate"
+        aria-label="Remove idea"
       >
         ×
       </button>
@@ -884,38 +886,92 @@ function ProposalRow({
 
 function ProposeSheet({
   meals,
-  weekStart,
-  alreadyProposed,
+  members,
+  proposals,
   onClose,
 }: {
   meals: Meal[];
-  weekStart: string;
-  alreadyProposed: Set<number>;
+  members: Member[];
+  proposals: ProposalWithVotes[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [slot, setSlot] = useState<MealSlot>("dinner");
+  const [who, setWho] = useState<number | null>(members[0]?.id ?? null);
   const [filter, setFilter] = useState<"favorites" | "all">("favorites");
 
-  // Voting fills next week's dinner slots, so only dinner-eligible meals.
-  const dinnerMeals = meals.filter((m) => m.slots.includes("dinner"));
-  const favorites = dinnerMeals.filter((m) => m.is_favorite && !alreadyProposed.has(m.id));
-  const others = dinnerMeals.filter((m) => !m.is_favorite && !alreadyProposed.has(m.id));
-  const shown = filter === "favorites"
-    ? (favorites.length > 0 ? favorites : others)
-    : [...favorites, ...others];
+  const personal = slot === "breakfast";
+  const memberId = personal ? who : null;
+  const slotLabel = SLOTS.find((s) => s.key === slot)?.label ?? slot;
+
+  const already = new Set(
+    proposals
+      .filter((p) => p.slot_type === slot && (p.member_id ?? null) === (memberId ?? null))
+      .map((p) => p.meal_id)
+  );
+  const eligible = meals.filter((m) => m.slots.includes(slot) && !already.has(m.id));
+  const favorites = eligible.filter((m) => m.is_favorite);
+  const others = eligible.filter((m) => !m.is_favorite);
+  const shown = filter === "favorites" ? (favorites.length > 0 ? favorites : others) : [...favorites, ...others];
 
   const propose = (mealId: number) => {
+    if (personal && memberId == null) return;
     start(async () => {
-      await proposeMealAction(mealId, weekStart);
+      await proposeMealAction(mealId, slot, memberId);
       router.refresh();
       onClose();
     });
   };
 
   return (
-    <Sheet open onClose={onClose} title="Propose a meal" width="max-w-2xl">
+    <Sheet open onClose={onClose} title="Propose a dish" width="max-w-2xl">
       <div className="space-y-4">
+        <div>
+          <div className="text-sm font-medium text-zinc-500 mb-2">Meal</div>
+          <div className="flex gap-2">
+            {SLOTS.map((s) => (
+              <button
+                key={s.key}
+                onClick={() => setSlot(s.key)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+                  slot === s.key ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200 text-zinc-700"
+                }`}
+              >
+                <span>{s.icon}</span>
+                <span>{s.label}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-zinc-500 mt-1">
+            {personal ? "Breakfast is a personal pick — choose whose." : "Lunch & dinner are shared — the family votes."}
+          </p>
+        </div>
+
+        {personal && (
+          <div>
+            <div className="text-sm font-medium text-zinc-500 mb-2">For</div>
+            <div className="flex flex-wrap gap-2">
+              {members.map((m) => {
+                const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
+                const sel = who === m.id;
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() => setWho(m.id)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+                      sel ? `${color.bg} ${color.border} text-white` : "border-zinc-200"
+                    }`}
+                  >
+                    <span>{memberGlyph(m)}</span>
+                    <span>{m.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <button
             onClick={() => setFilter("favorites")}
@@ -927,25 +983,28 @@ function ProposeSheet({
             onClick={() => setFilter("all")}
             className={`px-4 py-2 rounded-full text-sm ${filter === "all" ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-700"}`}
           >
-            All meals ({favorites.length + others.length})
+            All ({favorites.length + others.length})
           </button>
         </div>
+
         {shown.length === 0 ? (
-          <div className="text-center py-8 text-zinc-400 italic">All meals are already candidates.</div>
+          <div className="text-center py-8 text-zinc-400 italic">
+            No more {slotLabel.toLowerCase()} dishes to propose.
+          </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             {shown.map((m) => (
               <button
                 key={m.id}
                 onClick={() => propose(m.id)}
-                disabled={pending}
-                className="flex items-center gap-3 p-3 rounded-xl border-2 border-zinc-200 hover:bg-zinc-50 text-left"
+                disabled={pending || (personal && memberId == null)}
+                className="flex items-center gap-3 p-3 rounded-xl border-2 border-zinc-200 hover:bg-zinc-50 text-left disabled:opacity-40"
               >
                 <div className="text-3xl">{m.icon}</div>
                 <div className="min-w-0">
                   <div className="font-medium truncate flex items-center gap-1">
                     {m.name}
-                    {m.is_favorite && <span className="text-sm">❤️</span>}
+                    {m.is_favorite ? <span className="text-sm">❤️</span> : null}
                   </div>
                   <div className="text-xs text-zinc-500">{m.ingredients.length} ingredients</div>
                 </div>
