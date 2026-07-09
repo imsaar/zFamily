@@ -16,7 +16,8 @@ export function MobileEventForm({ members }: { members: Member[] }) {
   const [time, setTime] = useState(format(new Date(Date.now() + 3600_000), "HH:00"));
   const [duration, setDuration] = useState(60);
   const [allDay, setAllDay] = useState(false);
-  const [recurrence, setRecurrence] = useState<"none" | "weekly" | "monthly" | "quarterly">("none");
+  const [recurrence, setRecurrence] = useState<"none" | "daily" | "weekdays" | "weekly" | "monthly">("none");
+  const [interval, setInterval] = useState(1);
 
   const submit = () => {
     if (!title.trim()) return;
@@ -30,6 +31,7 @@ export function MobileEventForm({ members }: { members: Member[] }) {
         end_ts: Math.floor(endDate.getTime() / 1000),
         all_day: allDay,
         recurrence,
+        interval,
       });
       router.push("/m");
     });
@@ -120,9 +122,10 @@ export function MobileEventForm({ members }: { members: Member[] }) {
         <div className="mt-2 flex flex-wrap gap-2">
           {([
             ["none", "Once"],
+            ["daily", "Every day"],
+            ["weekdays", "Weekdays"],
             ["weekly", "Weekly"],
             ["monthly", "Monthly"],
-            ["quarterly", "Every 3 months"],
           ] as const).map(([key, label]) => (
             <button
               key={key}
@@ -135,6 +138,20 @@ export function MobileEventForm({ members }: { members: Member[] }) {
             </button>
           ))}
         </div>
+        {(recurrence === "weekly" || recurrence === "monthly") && (
+          <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-zinc-600">Every</span>
+            <input
+              type="number"
+              min={1}
+              max={recurrence === "weekly" ? 52 : 24}
+              value={interval}
+              onChange={(e) => setInterval(Math.max(1, Math.min(recurrence === "weekly" ? 52 : 24, Number(e.target.value) || 1)))}
+              className="w-16 px-3 py-2 text-center text-lg border border-zinc-300 rounded-xl bg-white tabular-nums"
+            />
+            <span className="text-sm text-zinc-600">{recurrence === "weekly" ? (interval === 1 ? "week" : "weeks") : (interval === 1 ? "month" : "months")}</span>
+          </div>
+        )}
       </div>
 
       <button

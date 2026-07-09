@@ -8,6 +8,12 @@ import { createEventAction } from "@/app/actions";
 import type { Member, MemberColor } from "@/lib/types";
 import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
+function ordinal(n: number): string {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 export function QuickAddSheet({
   day,
   hour,
@@ -22,15 +28,20 @@ export function QuickAddSheet({
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [memberId, setMemberId] = useState<number | null>(members[0]?.id ?? null);
-  const [duration, setDuration] = useState(60); // minutes
-  const [recurrence, setRecurrence] = useState<"none" | "weekly" | "monthly" | "quarterly">("none");
+  const [dateStr, setDateStr] = useState(format(day, "yyyy-MM-dd"));
+  const [timeStr, setTimeStr] = useState(format(setMinutes(setHours(day, hour), 0), "HH:mm"));
+  const [duration, setDuration] = useState(60); // minutes (source of truth)
+  const [unit, setUnit] = useState<"min" | "hr">("min");
+  const [recurrence, setRecurrence] = useState<"none" | "daily" | "weekdays" | "weekly" | "monthly">("none");
+  const [interval, setInterval] = useState(1);
   const [pending, start] = useTransition();
 
-  const startDate = setMinutes(setHours(day, hour), 0);
-  const endDate = addHours(startDate, duration / 60);
+  const startDate = new Date(`${dateStr}T${timeStr || "00:00"}:00`);
+  const validWhen = dateStr !== "" && timeStr !== "" && !isNaN(startDate.getTime());
+  const endDate = validWhen ? addHours(startDate, duration / 60) : startDate;
 
   const onSubmit = () => {
-    if (!title.trim()) return;
+    if (!title.trim() || !validWhen) return;
     start(async () => {
       await createEventAction({
         member_id: memberId,
@@ -38,6 +49,7 @@ export function QuickAddSheet({
         start_ts: Math.floor(startDate.getTime() / 1000),
         end_ts: Math.floor(endDate.getTime() / 1000),
         recurrence,
+        interval,
       });
       router.refresh();
       onClose();
@@ -83,14 +95,30 @@ export function QuickAddSheet({
 
         <div>
           <label className="text-sm font-medium text-zinc-500">When</label>
-          <div className="mt-1 text-lg">
-            {format(startDate, "EEE, MMM d · h:mm a")} – {format(endDate, "h:mm a")}
+          <div className="mt-1 grid grid-cols-2 gap-3">
+            <input
+              type="date"
+              value={dateStr}
+              onChange={(e) => setDateStr(e.target.value)}
+              className="w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl focus:outline-none focus:border-zinc-900"
+            />
+            <input
+              type="time"
+              value={timeStr}
+              onChange={(e) => setTimeStr(e.target.value)}
+              className="w-full px-4 py-3 text-lg border border-zinc-300 rounded-xl focus:outline-none focus:border-zinc-900"
+            />
           </div>
+          {validWhen && (
+            <div className="mt-1 text-sm text-zinc-500">
+              {format(startDate, "EEE, MMM d")} · {format(startDate, "h:mm a")} – {format(endDate, "h:mm a")}
+            </div>
+          )}
         </div>
 
         <div>
           <label className="text-sm font-medium text-zinc-500">Duration</label>
-          <div className="mt-2 flex gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             {[30, 60, 90, 120, 180].map((min) => (
               <button
                 key={min}
@@ -102,6 +130,33 @@ export function QuickAddSheet({
                 {min < 60 ? `${min}m` : `${min / 60}h`}
               </button>
             ))}
+            <div className="flex items-center gap-2 ml-1">
+              <input
+                type="number"
+                min={unit === "hr" ? 0.25 : 5}
+                max={unit === "hr" ? 24 : 1440}
+                step={unit === "hr" ? 0.25 : 5}
+                value={unit === "hr" ? +(duration / 60).toFixed(2) : duration}
+                onChange={(e) => {
+                  const n = Number(e.target.value);
+                  if (!Number.isFinite(n) || n <= 0) return;
+                  const mins = unit === "hr" ? Math.round(n * 60) : Math.round(n);
+                  setDuration(Math.max(1, Math.min(1440, mins)));
+                }}
+                className="w-20 px-3 py-2 text-center text-lg border border-zinc-300 rounded-xl tabular-nums focus:outline-none focus:border-zinc-900"
+              />
+              <div className="flex rounded-full border-2 border-zinc-200 overflow-hidden">
+                {(["min", "hr"] as const).map((u) => (
+                  <button
+                    key={u}
+                    onClick={() => setUnit(u)}
+                    className={`px-3 py-2 text-sm ${unit === u ? "bg-zinc-900 text-white" : "text-zinc-600"}`}
+                  >
+                    {u}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -110,9 +165,10 @@ export function QuickAddSheet({
           <div className="mt-2 flex flex-wrap gap-2">
             {([
               ["none", "One-time"],
-              ["weekly", "Every week"],
-              ["monthly", "Every month"],
-              ["quarterly", "Every 3 months"],
+              ["daily", "Every day"],
+              ["weekdays", "Weekdays"],
+              ["weekly", "Weekly"],
+              ["monthly", "Monthly"],
             ] as const).map(([key, label]) => (
               <button
                 key={key}
@@ -125,6 +181,24 @@ export function QuickAddSheet({
               </button>
             ))}
           </div>
+          {(recurrence === "weekly" || recurrence === "monthly") && (
+            <div className="mt-3 flex items-center gap-2 flex-wrap">
+              <span className="text-sm text-zinc-600">Every</span>
+              <input
+                type="number"
+                min={1}
+                max={recurrence === "weekly" ? 52 : 24}
+                value={interval}
+                onChange={(e) => setInterval(Math.max(1, Math.min(recurrence === "weekly" ? 52 : 24, Number(e.target.value) || 1)))}
+                className="w-16 px-3 py-2 text-center text-lg border border-zinc-300 rounded-xl tabular-nums focus:outline-none focus:border-zinc-900"
+              />
+              <span className="text-sm text-zinc-600">
+                {recurrence === "weekly"
+                  ? `${interval === 1 ? "week" : "weeks"} on ${validWhen ? format(startDate, "EEEE") : "the start weekday"}`
+                  : `${interval === 1 ? "month" : "months"} on the ${validWhen ? ordinal(startDate.getDate()) : "start date"}`}
+              </span>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3 pt-2">
@@ -136,7 +210,7 @@ export function QuickAddSheet({
           </button>
           <button
             onClick={onSubmit}
-            disabled={pending || !title.trim()}
+            disabled={pending || !title.trim() || !validWhen}
             className="flex-1 py-3 rounded-xl bg-zinc-900 text-white font-medium disabled:opacity-40 active:bg-zinc-800"
           >
             {pending ? "Saving…" : "Add event"}

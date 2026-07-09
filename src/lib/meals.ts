@@ -1,5 +1,4 @@
 import { db } from "./db";
-import { addDays, startOfWeek, format } from "date-fns";
 
 export type Ingredient = { name: string; quantity?: string; unit?: string };
 
@@ -64,12 +63,17 @@ export function toggleFavorite(id: number) {
   db().prepare("UPDATE meals SET is_favorite = 1 - COALESCE(is_favorite, 0) WHERE id = ?").run(id);
 }
 
-// Voting
+// Meal proposals — a future "wishlist" of dishes, tagged by meal-type. Lunch
+// and dinner ideas are shared (member_id NULL) and the family votes on them;
+// breakfast ideas are personal to the proposer (member_id set, no voting).
+// Proposals are NOT tied to a date or plan slot — parents place them onto the
+// plan from the slot picker when they choose.
 
 export type Proposal = {
   id: number;
   meal_id: number;
-  week_start: string;
+  slot_type: MealSlot;
+  member_id: number | null; // proposer, for personal breakfast; NULL for shared lunch/dinner
   created_at: number;
 };
 
@@ -78,16 +82,10 @@ export type ProposalWithVotes = Proposal & {
   votes: number[]; // member IDs
 };
 
-export function nextWeekStart(from: Date = new Date()): string {
-  // Week starts on Sunday
-  const thisWeek = startOfWeek(from, { weekStartsOn: 0 });
-  return format(addDays(thisWeek, 7), "yyyy-MM-dd");
-}
-
-export function listProposals(weekStart: string): ProposalWithVotes[] {
+export function listProposals(): ProposalWithVotes[] {
   const proposals = db()
-    .prepare("SELECT * FROM meal_proposals WHERE week_start = ? ORDER BY created_at DESC")
-    .all(weekStart) as Proposal[];
+    .prepare("SELECT * FROM meal_proposals ORDER BY created_at DESC")
+    .all() as Proposal[];
   if (proposals.length === 0) return [];
   const votes = db()
     .prepare(
@@ -113,16 +111,21 @@ export function listProposals(weekStart: string): ProposalWithVotes[] {
     .filter((x): x is ProposalWithVotes => x !== null);
 }
 
-export function proposeMeal(mealId: number, weekStart: string): number {
+/** Add a dish to the idea pool. Breakfast ideas are personal (pass the
+ *  proposer's memberId); lunch/dinner are shared (memberId null). De-dupes on
+ *  (meal, slot_type, member). Returns the proposal id. */
+export function proposeMeal(mealId: number, slotType: MealSlot, memberId: number | null): number {
+  const existing = db()
+    .prepare(
+      `SELECT id FROM meal_proposals WHERE meal_id = ? AND slot_type = ? AND (member_id IS ? OR member_id = ?)`
+    )
+    .get(mealId, slotType, memberId, memberId) as { id: number } | undefined;
+  if (existing) return existing.id;
   const now = Math.floor(Date.now() / 1000);
   const r = db()
-    .prepare(
-      `INSERT INTO meal_proposals (meal_id, week_start, created_at) VALUES (?, ?, ?)
-       ON CONFLICT(meal_id, week_start) DO UPDATE SET meal_id = excluded.meal_id
-       RETURNING id`
-    )
-    .get(mealId, weekStart, now) as { id: number };
-  return r.id;
+    .prepare("INSERT INTO meal_proposals (meal_id, slot_type, member_id, created_at) VALUES (?, ?, ?, ?)")
+    .run(mealId, slotType, memberId, now);
+  return Number(r.lastInsertRowid);
 }
 
 export function removeProposal(id: number) {
@@ -143,57 +146,6 @@ export function withdrawVote(proposalId: number, memberId: number) {
   db()
     .prepare("DELETE FROM meal_votes WHERE proposal_id = ? AND member_id = ?")
     .run(proposalId, memberId);
-}
-
-/** Applies the top-voted proposals to next week's dinner slots (Sun–Sat).
- *  Ties broken by earliest created_at. Skips slots that already have a meal
- *  unless overwrite=true. Returns how many slots were filled. */
-export function applyWinnersToPlan(weekStart: string, overwrite = false): number {
-  const proposals = listProposals(weekStart);
-  if (proposals.length === 0) return 0;
-  const ranked = [...proposals].sort((a, b) => {
-    if (b.votes.length !== a.votes.length) return b.votes.length - a.votes.length;
-    return a.created_at - b.created_at;
-  });
-
-  let filled = 0;
-  const existing = db()
-    .prepare(
-      `SELECT meal_date, meal_id FROM meal_plan_entries
-       WHERE slot = 'dinner' AND meal_date >= ? AND meal_date <= ?`
-    )
-    .all(weekStart, format(addDays(new Date(`${weekStart}T12:00:00`), 6), "yyyy-MM-dd")) as Array<{
-      meal_date: string;
-      meal_id: number;
-    }>;
-  const alreadyPlanned = new Set(existing.map((e) => e.meal_id));
-  const busyDays = new Set(existing.map((e) => e.meal_date));
-
-  const upsert = db().prepare(
-    `INSERT INTO meal_plan_entries (meal_date, slot, meal_id) VALUES (?, 'dinner', ?)
-     ON CONFLICT(meal_date, slot) DO UPDATE SET meal_id = excluded.meal_id`
-  );
-
-  let dayOffset = 0;
-  for (const p of ranked) {
-    if (dayOffset > 6) break;
-    if (!overwrite && alreadyPlanned.has(p.meal_id)) continue;
-    // find next open day
-    while (dayOffset <= 6) {
-      const dateStr = format(addDays(new Date(`${weekStart}T12:00:00`), dayOffset), "yyyy-MM-dd");
-      if (!overwrite && busyDays.has(dateStr)) {
-        dayOffset++;
-        continue;
-      }
-      upsert.run(dateStr, p.meal_id);
-      busyDays.add(dateStr);
-      alreadyPlanned.add(p.meal_id);
-      filled++;
-      dayOffset++;
-      break;
-    }
-  }
-  return filled;
 }
 
 export function listMeals(): Meal[] {

@@ -11,6 +11,8 @@ import {
   verifyCompletionAction,
   unverifyCompletionAction,
   redeemRewardAction,
+  completeSharedChoreAction,
+  uncompleteSharedChoreAction,
 } from "@/app/actions";
 import { Sheet } from "./Sheet";
 import { useRequestPin } from "./PinPad";
@@ -20,6 +22,8 @@ type PendingRow = ChoreCompletion & { chore: { id: number; title: string; icon: 
 export function ChoreBoard({
   members,
   todayChores,
+  sharedChores,
+  sharedCompletionByChore,
   completionsByMember,
   weeklyStats,
   streaks,
@@ -30,6 +34,8 @@ export function ChoreBoard({
 }: {
   members: Member[];
   todayChores: ChoreWithAssignees[];
+  sharedChores: ChoreWithAssignees[];
+  sharedCompletionByChore: Map<number, ChoreCompletion>;
   completionsByMember: Map<number, ChoreCompletion[]>;
   weeklyStats: Map<number, { due: number; done: number }>;
   streaks: Map<number, number>;
@@ -45,6 +51,12 @@ export function ChoreBoard({
 
   const today = new Date();
   const memberById = new Map(members.map((m) => [m.id, m]));
+  // Children first, parents last (stable within each group).
+  const orderedMembers = [...members].sort(
+    (a, b) => (a.role === "child" ? 0 : 1) - (b.role === "child" ? 0 : 1)
+  );
+  // Cap at 4 per row; wraps to a second row beyond that.
+  const gridCols = Math.min(Math.max(members.length, 1), 4);
 
   return (
     <div className="h-full flex flex-col bg-zinc-50">
@@ -76,12 +88,20 @@ export function ChoreBoard({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {sharedChores.length > 0 && (
+          <CommonChores
+            chores={sharedChores}
+            members={members}
+            completionByChore={sharedCompletionByChore}
+            eligibleByCompletion={eligibleByCompletion}
+          />
+        )}
         <div
-          className="grid gap-6 h-full"
-          style={{ gridTemplateColumns: `repeat(${Math.max(members.length, 1)}, minmax(0, 1fr))` }}
+          className="grid gap-4"
+          style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
         >
-          {members.map((m) => {
+          {orderedMembers.map((m) => {
             const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
             const memberChores = todayChores.filter((c) => c.assignees.includes(m.id));
             const comps = completionsByMember.get(m.id) ?? [];
@@ -102,31 +122,29 @@ export function ChoreBoard({
 
             return (
               <div key={m.id} className="bg-white rounded-2xl shadow-sm border border-zinc-200 flex flex-col overflow-hidden">
-                <div className={`${color.bg} px-5 py-4 text-white flex items-center justify-between`}>
-                  <div className="flex items-center gap-3">
-                    {m.photo_updated_at ? (
-                      <img
-                        src={`/api/avatar/${m.id}?v=${m.photo_updated_at}`}
-                        alt={m.name}
-                        className="w-12 h-12 rounded-full object-cover bg-white/20"
-                      />
-                    ) : (
-                      <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl">
-                        {memberGlyph(m)}
-                      </div>
-                    )}
-                    <div>
-                      <div className="text-xl font-semibold flex items-center gap-2">
-                        {displayName(m)}
-                        <span className="text-[10px] uppercase tracking-wider bg-white/20 px-1.5 py-0.5 rounded">
-                          {m.role}
-                        </span>
-                      </div>
-                      <div className="text-sm opacity-80">{pointsToday}/{totalPoints} pts today · 🏆 {balance}</div>
+                <div className={`${color.bg} px-4 py-4 text-white flex items-center gap-3`}>
+                  {m.photo_updated_at ? (
+                    <img
+                      src={`/api/avatar/${m.id}?v=${m.photo_updated_at}`}
+                      alt={m.name}
+                      className="w-12 h-12 rounded-full object-cover bg-white/20 shrink-0"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-2xl shrink-0">
+                      {memberGlyph(m)}
                     </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xl font-semibold truncate">{displayName(m)}</span>
+                      <span className="shrink-0 text-[10px] uppercase tracking-wider bg-white/20 px-1.5 py-0.5 rounded">
+                        {m.role}
+                      </span>
+                    </div>
+                    <div className="text-sm opacity-80 truncate">{pointsToday}/{totalPoints} pts · 🏆 {balance}</div>
                   </div>
                   {streak > 0 && (
-                    <div className="bg-white/20 rounded-full px-3 py-1 text-sm">
+                    <div className="bg-white/20 rounded-full px-2.5 py-1 text-sm shrink-0">
                       🔥 {streak}
                     </div>
                   )}
@@ -157,7 +175,7 @@ export function ChoreBoard({
                               })
                             }
                             disabled={pendingT}
-                            className={`w-full flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${
+                            className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl border-2 transition-all ${
                               status === "verified"
                                 ? `${color.bgSoft} ${color.border} opacity-70`
                                 : status === "pending"
@@ -166,7 +184,7 @@ export function ChoreBoard({
                             }`}
                           >
                             <div
-                              className={`w-12 h-12 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                              className={`w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0 ${
                                 status === "verified"
                                   ? `${color.bg} border-transparent text-white`
                                   : status === "pending"
@@ -175,20 +193,20 @@ export function ChoreBoard({
                               }`}
                             >
                               {status === "verified" && (
-                                <svg viewBox="0 0 20 20" className="w-6 h-6 tick-pop" fill="none" stroke="currentColor" strokeWidth="3">
+                                <svg viewBox="0 0 20 20" className="w-5 h-5 tick-pop" fill="none" stroke="currentColor" strokeWidth="3">
                                   <path d="M4 10l4 4 8-8" strokeLinecap="round" strokeLinejoin="round" />
                                 </svg>
                               )}
                               {status === "pending" && <div className="text-xs">⏳</div>}
                             </div>
-                            <div className="text-2xl">{c.icon}</div>
-                            <div className={`flex-1 text-left font-medium ${status === "verified" ? "line-through text-zinc-400" : ""}`}>
+                            <div className="text-xl shrink-0">{c.icon}</div>
+                            <div className={`flex-1 min-w-0 text-left font-medium break-words ${status === "verified" ? "line-through text-zinc-400" : ""}`}>
                               {c.title}
                               {status === "pending" && (
                                 <div className="text-xs text-amber-600 font-normal mt-0.5">Awaiting verification</div>
                               )}
                             </div>
-                            <div className="text-sm text-zinc-400 tabular-nums">{c.points}pt</div>
+                            <div className="text-sm text-zinc-400 tabular-nums shrink-0">{c.points}pt</div>
                           </button>
 
                           {status === "pending" && comp && (
@@ -275,6 +293,147 @@ export function ChoreBoard({
         />
       )}
     </div>
+  );
+}
+
+function CommonChores({
+  chores,
+  members,
+  completionByChore,
+  eligibleByCompletion,
+}: {
+  chores: ChoreWithAssignees[];
+  members: Member[];
+  completionByChore: Map<number, ChoreCompletion>;
+  eligibleByCompletion: Map<number, number[]>;
+}) {
+  const router = useRouter();
+  const [pendingT, start] = useTransition();
+  const [picking, setPicking] = useState<ChoreWithAssignees | null>(null);
+  const memberById = new Map(members.map((m) => [m.id, m]));
+
+  const markDone = (choreId: number, memberId: number) => {
+    start(async () => {
+      await completeSharedChoreAction(choreId, memberId);
+      router.refresh();
+    });
+  };
+  const undo = (choreId: number) => {
+    start(async () => {
+      await uncompleteSharedChoreAction(choreId);
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-zinc-200 shadow-sm overflow-hidden">
+      <div className="px-5 py-3 border-b border-zinc-100 bg-zinc-50">
+        <div className="text-lg font-semibold">🧹 Common chores</div>
+        <div className="text-xs text-zinc-500">Anyone can do these — once it&apos;s done, it&apos;s done for everyone.</div>
+      </div>
+      <div className="p-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
+        {chores.map((c) => {
+          const comp = completionByChore.get(c.id);
+          const doer = comp ? memberById.get(comp.member_id) : null;
+          const verified = !!comp?.verified_at;
+          const eligible = comp ? eligibleByCompletion.get(comp.id) ?? [] : [];
+          return (
+            <div key={c.id} className={`rounded-xl border-2 p-3 ${comp ? "border-emerald-200 bg-emerald-50/40" : "border-zinc-200"}`}>
+              <div className="flex items-center gap-3">
+                <div className="text-2xl shrink-0">{c.icon}</div>
+                <div className="flex-1 min-w-0">
+                  <div className={`font-medium truncate ${verified ? "line-through text-zinc-400" : ""}`}>{c.title}</div>
+                  <div className="text-xs text-zinc-500 tabular-nums">{c.points}pt</div>
+                </div>
+                {!comp ? (
+                  <button
+                    onClick={() => setPicking(c)}
+                    disabled={pendingT}
+                    className="h-11 px-4 rounded-full bg-zinc-900 text-white text-sm font-medium active:bg-zinc-800 shrink-0"
+                  >
+                    Mark done
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="flex items-center gap-1.5 text-sm">
+                      <span className="w-8 h-8 rounded-full bg-white border border-zinc-200 flex items-center justify-center">
+                        {doer ? memberGlyph(doer) : "?"}
+                      </span>
+                      <span className="text-zinc-600">{doer ? displayName(doer) : "?"}</span>
+                    </span>
+                    <button
+                      onClick={() => undo(c.id)}
+                      disabled={pendingT}
+                      aria-label="Undo"
+                      className="w-8 h-8 text-zinc-300 hover:text-red-500 text-lg"
+                    >
+                      ×
+                    </button>
+                  </div>
+                )}
+              </div>
+              {comp && !verified && (
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  <div className="text-xs text-amber-600">Awaiting verification</div>
+                  {eligible.map((vid) => {
+                    const v = memberById.get(vid);
+                    if (!v) return null;
+                    return (
+                      <PinVerifyPill key={vid} verifier={v} completionId={comp.id} onDone={() => router.refresh()} disabled={pendingT} />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {picking && (
+        <WhoDidItSheet
+          chore={picking}
+          members={members}
+          onPick={(mid) => {
+            markDone(picking.id, mid);
+            setPicking(null);
+          }}
+          onClose={() => setPicking(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function WhoDidItSheet({
+  chore,
+  members,
+  onPick,
+  onClose,
+}: {
+  chore: ChoreWithAssignees;
+  members: Member[];
+  onPick: (memberId: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Sheet open onClose={onClose} title={`Who did "${chore.title}"?`} width="max-w-lg">
+      <div className="grid grid-cols-2 gap-3">
+        {members.map((m) => {
+          const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;
+          return (
+            <button
+              key={m.id}
+              onClick={() => onPick(m.id)}
+              className={`flex items-center gap-3 p-3 rounded-xl border-2 ${color.border} active:bg-zinc-50`}
+            >
+              <span className={`w-11 h-11 rounded-full ${color.bg} text-white flex items-center justify-center text-xl shrink-0`}>
+                {memberGlyph(m)}
+              </span>
+              <span className="font-medium truncate">{displayName(m)}</span>
+            </button>
+          );
+        })}
+      </div>
+    </Sheet>
   );
 }
 

@@ -86,6 +86,7 @@ export type Chore = {
   points: number;
   recurrence: string; // 'daily' | 'weekdays' | 'weekends' | 'weekly:MON,WED'
   active: number;
+  shared: number; // 1 = common chore, doable by anyone (no assignees)
   created_at: number;
 };
 
