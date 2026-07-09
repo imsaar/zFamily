@@ -26,6 +26,9 @@ import {
   saveBackupToDiskAction,
   listBackupsAction,
   restoreStoredBackupAction,
+  checkForUpdateAction,
+  runUpdateAction,
+  restartAppAction,
   setMemberPhotoAction,
   clearMemberPhotoAction,
   createIcalFeedAction,
@@ -40,6 +43,7 @@ import { useSettingsAuth } from "./SettingsAuth";
 import { PinPadModal } from "./PinPad";
 import { MemberAvatar } from "./MemberAvatar";
 import { IconPicker } from "./IconPicker";
+import { useConfirm } from "./ConfirmProvider";
 import { CHORE_TEMPLATES, type ChoreTemplate } from "@/lib/choreTemplates";
 import { readImageAsResizedDataUrl } from "@/lib/image";
 
@@ -101,6 +105,7 @@ function MembersTab({ members }: { members: Member[] }) {
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<Member | "new" | null>(null);
   const { authenticate, modal } = useSettingsAuth();
+  const { confirm } = useConfirm();
 
   return (
     <div className="max-w-3xl">
@@ -138,7 +143,7 @@ function MembersTab({ members }: { members: Member[] }) {
               </button>
               <button
                 onClick={async () => {
-                  if (!confirm(`Delete ${m.name}?`)) return;
+                  if (!(await confirm({ title: "Delete member?", message: `Delete ${m.name} and all their data?`, confirmLabel: "Delete", danger: true }))) return;
                   setPending(true);
                   try {
                     const ok = await authenticate((auth) => deleteMemberAction(m.id, auth));
@@ -172,6 +177,7 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const { authenticate, modal } = useSettingsAuth();
+  const { confirm } = useConfirm();
   const [showSetPin, setShowSetPin] = useState(false);
   const [pinError, setPinError] = useState<string | null>(null);
   const [name, setName] = useState(member?.name ?? "");
@@ -202,7 +208,7 @@ function MemberEditor({ member, onClose }: { member: Member | null; onClose: () 
   // Settings screen is already parent-authorized, so no child PIN is needed.
   const removePin = async () => {
     if (!member) return;
-    if (!confirm(`Remove ${displayName(member)}'s PIN?`)) return;
+    if (!(await confirm({ title: "Remove PIN?", message: `Remove ${displayName(member)}’s PIN?`, confirmLabel: "Remove", danger: true }))) return;
     setPinError(null);
     const ok = await authenticate((auth) => clearMemberPinAction(member.id, null, auth));
     if (ok) router.refresh();
@@ -481,6 +487,7 @@ function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members:
   const [seed, setSeed] = useState<ChoreTemplate | null>(null);
   const [browsing, setBrowsing] = useState(false);
   const { authenticate, modal } = useSettingsAuth();
+  const { confirm } = useConfirm();
 
   return (
     <div className="max-w-4xl">
@@ -530,7 +537,7 @@ function ChoresTab({ chores, members }: { chores: ChoreWithAssignees[]; members:
             <button onClick={() => setEditing(c)} className="px-4 py-2 rounded-lg border border-zinc-300">Edit</button>
             <button
               onClick={async () => {
-                if (!confirm(`Delete chore "${c.title}"?`)) return;
+                if (!(await confirm({ title: "Delete chore?", message: `Delete “${c.title}”?`, confirmLabel: "Delete", danger: true }))) return;
                 setPending(true);
                 try {
                   const ok = await authenticate((auth) => deleteChoreAction(c.id, auth));
@@ -779,6 +786,7 @@ function RewardsTab({ rewards }: { rewards: Reward[] }) {
   const [pending, setPending] = useState(false);
   const [editing, setEditing] = useState<Reward | "new" | null>(null);
   const { authenticate, modal } = useSettingsAuth();
+  const { confirm } = useConfirm();
 
   return (
     <div className="max-w-3xl">
@@ -809,7 +817,7 @@ function RewardsTab({ rewards }: { rewards: Reward[] }) {
             <button onClick={() => setEditing(r)} className="px-4 py-2 rounded-lg border border-zinc-300">Edit</button>
             <button
               onClick={async () => {
-                if (!confirm(`Delete "${r.title}"?`)) return;
+                if (!(await confirm({ title: "Delete reward?", message: `Delete “${r.title}”?`, confirmLabel: "Delete", danger: true }))) return;
                 setPending(true);
                 try {
                   const ok = await authenticate((auth) => deleteRewardAction(r.id, auth));
@@ -1229,6 +1237,7 @@ function CalendarsTab({ feeds, members }: { feeds: IcalFeed[]; members: Member[]
   const [syncing, setSyncing] = useState(false);
   const [editing, setEditing] = useState<IcalFeed | "new" | null>(null);
   const { authenticate, modal } = useSettingsAuth();
+  const { confirm } = useConfirm();
 
   const syncAll = async () => {
     setSyncing(true);
@@ -1295,7 +1304,7 @@ function CalendarsTab({ feeds, members }: { feeds: IcalFeed[]; members: Member[]
               <button onClick={() => setEditing(f)} className="px-4 py-2 rounded-lg border border-zinc-300">Edit</button>
               <button
                 onClick={async () => {
-                  if (!confirm(`Remove the "${f.name}" subscription and its events?`)) return;
+                  if (!(await confirm({ title: "Remove subscription?", message: `Remove the “${f.name}” subscription and its events?`, confirmLabel: "Remove", danger: true }))) return;
                   setPending(true);
                   try {
                     const ok = await authenticate((auth) => deleteIcalFeedAction(f.id, auth));
@@ -1437,6 +1446,7 @@ function fmtBytes(n: number): string {
 function AdvancedTab({ settings }: { settings: Record<string, string> }) {
   const router = useRouter();
   const { authenticate, modal } = useSettingsAuth();
+  const { confirm } = useConfirm();
   const [pending, setPending] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
@@ -1445,6 +1455,82 @@ function AdvancedTab({ settings }: { settings: Record<string, string> }) {
   const [autoInterval, setAutoInterval] = useState(settings.auto_backup_interval ?? "weekly");
   const autoLastAt = Number(settings.auto_backup_last ?? 0);
   const [store, setStore] = useState<{ dir: string; defaultDir: string; backups: Array<{ name: string; size: number; savedAt: number }> } | null>(null);
+
+  // ── In-app software update ──
+  const [svc, setSvc] = useState(settings.update_service ?? "zfamily");
+  const [upInfo, setUpInfo] = useState<{ behind?: number; current?: string; latest?: string; branch?: string; reason?: string } | null>(null);
+  const [upBusy, setUpBusy] = useState(false);
+  const [upOutput, setUpOutput] = useState<string>("");
+  const [upDone, setUpDone] = useState(false); // build succeeded → offer restart
+  const [sysPw, setSysPw] = useState("");
+  const [restarting, setRestarting] = useState(false);
+  const [upMsg, setUpMsg] = useState<string | null>(null);
+
+  const checkUpdate = async () => {
+    setUpMsg(null);
+    setUpBusy(true);
+    try {
+      const holder: { v: typeof upInfo } = { v: null };
+      const ok = await authenticate(async (auth) => {
+        const r = await checkForUpdateAction(auth);
+        if (r.ok) holder.v = { behind: r.behind, current: r.current, latest: r.latest, branch: r.branch, reason: r.reason };
+        else holder.v = { reason: "reason" in r ? (r.reason as string) : "failed" };
+        return { ok: true };
+      });
+      if (ok) setUpInfo(holder.v);
+    } finally {
+      setUpBusy(false);
+    }
+  };
+
+  const runUpdate = async () => {
+    if (!(await confirm({ title: "Update the app?", message: "This pulls the latest code and rebuilds on this device. It can take a few minutes; don’t power off. The app restarts afterward.", confirmLabel: "Update" }))) return;
+    setUpMsg(null);
+    setUpDone(false);
+    setUpOutput("Updating… (git pull → npm install → build)");
+    setUpBusy(true);
+    try {
+      const holder: { out: string; ok: boolean } = { out: "", ok: false };
+      await authenticate(async (auth) => {
+        const r = await runUpdateAction(auth);
+        holder.out = "output" in r ? r.output : "Update not authorized.";
+        holder.ok = !!r.ok;
+        return { ok: true };
+      });
+      setUpOutput(holder.out || "(no output)");
+      setUpDone(holder.ok);
+      setUpMsg(holder.ok ? "Build complete — enter the system password to restart." : "Update failed. See the log above.");
+    } finally {
+      setUpBusy(false);
+    }
+  };
+
+  const doRestart = async () => {
+    if (!sysPw.trim()) return;
+    setRestarting(true);
+    setUpMsg("Restarting the app…");
+    const holder = { out: "" };
+    let ok = false;
+    try {
+      ok = await authenticate(async (auth) => {
+        const r = await restartAppAction(sysPw, svc, auth);
+        if (!("ok" in r) || !r.ok) holder.out = "output" in r ? r.output : "";
+        return r as { ok: boolean };
+      });
+    } catch {
+      // The server was killed by the restart mid-request — that means it worked.
+      ok = true;
+    } finally {
+      setSysPw("");
+    }
+    if (ok) {
+      // Give systemd a few seconds to relaunch, then reconnect.
+      setTimeout(() => window.location.reload(), 7000);
+    } else {
+      setRestarting(false);
+      setUpMsg(`Restart failed — check the system password and service name.${holder.out ? `\n${holder.out.slice(-300)}` : ""}`);
+    }
+  };
 
   const saveAuto = async () => {
     setBackupMsg(null);
@@ -1513,7 +1599,7 @@ function AdvancedTab({ settings }: { settings: Record<string, string> }) {
   };
 
   const restoreStored = async (name: string) => {
-    if (!confirm(`Restore "${name}"? This REPLACES all current data and cannot be undone.`)) return;
+    if (!(await confirm({ title: "Restore this backup?", message: `“${name}” will REPLACE all current data. This cannot be undone.`, confirmLabel: "Restore", danger: true }))) return;
     setBackupBusy(true);
     setBackupMsg(null);
     try {
@@ -1567,7 +1653,7 @@ function AdvancedTab({ settings }: { settings: Record<string, string> }) {
       setBackupMsg("That file isn’t a valid backup (couldn’t read JSON).");
       return;
     }
-    if (!confirm("Restoring REPLACES all current data with this backup. This cannot be undone. Continue?")) return;
+    if (!(await confirm({ title: "Restore from backup?", message: "This REPLACES all current data with the backup. This cannot be undone.", confirmLabel: "Restore", danger: true }))) return;
     setBackupBusy(true);
     try {
       const ok = await authenticate((auth) => importAllDataAction(parsed, auth));
@@ -1583,12 +1669,18 @@ function AdvancedTab({ settings }: { settings: Record<string, string> }) {
   };
 
   const reset = async () => {
-    if (!confirm("Factory reset erases ALL data — family members, chores, meal plans, rewards, PINs, and settings. This cannot be undone. Continue?")) {
-      return;
-    }
-    if (!confirm("Are you absolutely sure? The app will restart from the first-run family setup.")) {
-      return;
-    }
+    if (!(await confirm({
+      title: "Factory reset?",
+      message: "This erases ALL data — family members, chores, meal plans, rewards, PINs, and settings. This cannot be undone.",
+      confirmLabel: "Continue",
+      danger: true,
+    }))) return;
+    if (!(await confirm({
+      title: "Are you absolutely sure?",
+      message: "The app will restart from the first-run family setup.",
+      confirmLabel: "Erase everything",
+      danger: true,
+    }))) return;
     setPending(true);
     try {
       const ok = await authenticate((auth) => factoryResetAction(auth));
@@ -1730,6 +1822,73 @@ function AdvancedTab({ settings }: { settings: Record<string, string> }) {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="rounded-2xl border-2 border-zinc-200 bg-white p-6 mb-6">
+        <h3 className="text-lg font-semibold">⬆️ Software update</h3>
+        <p className="text-sm text-zinc-600 mt-2 mb-4">
+          Pull the latest code and rebuild on this device, then restart to apply. Requires a git‑based install
+          (see the README). The build can take a few minutes.
+        </p>
+
+        <div className="flex flex-wrap gap-2 items-center mb-3">
+          <button onClick={checkUpdate} disabled={upBusy || restarting} className="px-4 py-2.5 rounded-xl border-2 border-zinc-300 text-sm font-medium disabled:opacity-50">
+            {upBusy ? "Working…" : "Check for updates"}
+          </button>
+          <button onClick={runUpdate} disabled={upBusy || restarting} className="px-4 py-2.5 rounded-xl bg-zinc-900 text-white text-sm font-medium disabled:opacity-50">
+            ⬆️ Update now
+          </button>
+        </div>
+
+        {upInfo && (
+          <div className="text-sm mb-3">
+            {upInfo.reason && upInfo.reason !== "no_upstream" ? (
+              <span className="text-amber-600 whitespace-pre-wrap break-words">{upInfo.reason}</span>
+            ) : upInfo.reason === "no_upstream" ? (
+              <span className="text-zinc-600">On <code>{upInfo.branch}</code> — no upstream branch to compare against.</span>
+            ) : (upInfo.behind ?? 0) > 0 ? (
+              <span className="text-zinc-800">🔔 {upInfo.behind} update{upInfo.behind === 1 ? "" : "s"} available on <code>{upInfo.branch}</code>. Latest: {upInfo.latest}</span>
+            ) : (
+              <span className="text-emerald-600">✓ Up to date ({upInfo.branch}). {upInfo.current}</span>
+            )}
+          </div>
+        )}
+
+        {upOutput && (
+          <pre className="text-xs bg-zinc-900 text-zinc-100 rounded-xl p-3 max-h-64 overflow-auto whitespace-pre-wrap">{upOutput}</pre>
+        )}
+
+        {upDone && (
+          <div className="mt-4 flex flex-wrap gap-2 items-center">
+            <input
+              type="password"
+              value={sysPw}
+              onChange={(e) => setSysPw(e.target.value)}
+              placeholder="System password"
+              className="px-4 py-2.5 border border-zinc-300 rounded-xl text-sm min-w-[200px]"
+            />
+            <button
+              onClick={doRestart}
+              disabled={restarting || !sysPw.trim()}
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-medium disabled:opacity-50"
+            >
+              {restarting ? "Restarting…" : "Restart & apply"}
+            </button>
+            <span className="text-xs text-zinc-400">Piped to sudo, never stored.</span>
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center gap-2">
+          <span className="text-xs text-zinc-500">systemd service</span>
+          <input
+            value={svc}
+            onChange={(e) => setSvc(e.target.value)}
+            onBlur={() => { if ((settings.update_service ?? "zfamily") !== svc.trim()) void authenticate((auth) => updateSettingAction("update_service", svc.trim(), auth)); }}
+            className="w-40 px-3 py-1.5 border border-zinc-300 rounded-lg text-sm"
+          />
+        </div>
+
+        {upMsg && <p className="text-sm text-zinc-600 mt-3 whitespace-pre-wrap break-words">{upMsg}</p>}
       </div>
 
       <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-6">

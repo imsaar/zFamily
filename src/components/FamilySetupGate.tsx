@@ -7,6 +7,7 @@ import { COLOR_CLASSES, MEMBER_COLORS } from "@/lib/types";
 import type { GeocodeResult } from "@/lib/geocode";
 import { completeFamilySetupAction, searchCityAction, importAllDataAction } from "@/app/actions";
 import { IconPicker } from "./IconPicker";
+import { useConfirm } from "./ConfirmProvider";
 
 type Draft = {
   key: number;
@@ -35,6 +36,7 @@ export function FamilySetupGate() {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const { confirm } = useConfirm();
 
   const restore = async (file: File | null) => {
     if (!file) return;
@@ -46,7 +48,7 @@ export function FamilySetupGate() {
       setError("That file isn’t a valid backup (couldn’t read JSON).");
       return;
     }
-    if (!confirm("Restore this backup? It will set up the family and all data from the file.")) return;
+    if (!(await confirm({ title: "Restore backup?", message: "This will set up the family and all data from the file.", confirmLabel: "Restore" }))) return;
     setRestoring(true);
     try {
       const r = await importAllDataAction(parsed);

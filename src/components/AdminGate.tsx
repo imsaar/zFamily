@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useParents } from "./PinProviders";
 import { usePinAuth, PinPadModal } from "./PinPad";
+import { useConfirm } from "./ConfirmProvider";
 import type { Member, MemberColor } from "@/lib/types";
 import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
@@ -22,6 +23,7 @@ type Executor = (auth: AdminAuth) => Promise<{ ok: boolean; reason?: string }>;
 export function useAdminAuth() {
   const parents = useParents();
   const { getPin, savePin, clear } = usePinAuth();
+  const { alert } = useConfirm();
   const [state, setState] = useState<null | {
     parent: Member | null; // null = still picking (only when 2+ parents)
     executor: Executor;
@@ -60,7 +62,7 @@ export function useAdminAuth() {
     (executor: Executor): Promise<boolean> => {
       return new Promise<boolean>((resolve) => {
         if (parents.length === 0) {
-          alert("Add a parent first — admin actions require parent approval.");
+          void alert({ title: "No parent yet", message: "Add a parent first — admin actions require parent approval." });
           resolve(false);
           return;
         }
@@ -79,7 +81,7 @@ export function useAdminAuth() {
         setState({ parent: initial, executor, resolve });
       });
     },
-    [parents, getPin, run]
+    [parents, getPin, run, alert]
   );
 
   const pickParent = (p: Member) => {
