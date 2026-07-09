@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import { Sheet } from "./Sheet";
 import { deleteEventAction, updateEventAction } from "@/app/actions";
+import { useAdminAuth } from "./AdminGate";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
 import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
@@ -18,7 +19,9 @@ export function EventDetailSheet({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  // Not useTransition — it defers the useAdminAuth PIN modal's state update.
+  const [pending, setPending] = useState(false);
+  const { authenticate, modal } = useAdminAuth();
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(event.title);
   const [memberId, setMemberId] = useState<number | null>(event.member_id);
@@ -27,26 +30,32 @@ export function EventDetailSheet({
 
   const isLocal = event.source === "local";
 
-  const handleSave = () => {
-    start(async () => {
-      await updateEventAction(event.id, {
-        title,
-        member_id: memberId,
-        location: location || null,
-        notes: notes || null,
-      });
-      router.refresh();
-      setEditing(false);
-    });
+  const handleSave = async () => {
+    setPending(true);
+    try {
+      const ok = await authenticate((auth) =>
+        updateEventAction(event.id, { title, member_id: memberId, location: location || null, notes: notes || null }, auth)
+      );
+      if (ok) {
+        router.refresh();
+        setEditing(false);
+      }
+    } finally {
+      setPending(false);
+    }
   };
 
-  const handleDelete = () => {
-    if (!confirm("Delete this event?")) return;
-    start(async () => {
-      await deleteEventAction(event.id);
-      router.refresh();
-      onClose();
-    });
+  const handleDelete = async () => {
+    setPending(true);
+    try {
+      const ok = await authenticate((auth) => deleteEventAction(event.id, auth));
+      if (ok) {
+        router.refresh();
+        onClose();
+      }
+    } finally {
+      setPending(false);
+    }
   };
 
   const startD = new Date(event.start_ts * 1000);
@@ -76,7 +85,7 @@ export function EventDetailSheet({
                         selected ? `${color.bg} ${color.border} text-white` : "border-zinc-200"
                       }`}
                     >
-                      {m.emoji} {m.name}
+                      {memberGlyph(m)} {m.name}
                     </button>
                   );
                 })}
@@ -158,6 +167,7 @@ export function EventDetailSheet({
           )}
         </div>
       </div>
+      {modal}
     </Sheet>
   );
 }

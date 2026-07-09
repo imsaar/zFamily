@@ -6,6 +6,7 @@ import { format, isSameMonth, isToday, addMonths } from "date-fns";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
 import { COLOR_CLASSES } from "@/lib/types";
 import { EventDetailSheet } from "./EventDetailSheet";
+import { QuickAddSheet } from "./QuickAddSheet";
 
 export function MonthView({
   days,
@@ -19,6 +20,7 @@ export function MonthView({
   anchor: Date;
 }) {
   const [openEvent, setOpenEvent] = useState<EventRow | null>(null);
+  const [quickAdd, setQuickAdd] = useState<Date | null>(null);
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
 
   const eventsByDay = new Map<string, EventRow[]>();
@@ -61,7 +63,9 @@ export function MonthView({
           return (
             <div
               key={key}
-              className={`relative border-r border-b border-zinc-100 p-1.5 min-h-0 overflow-hidden flex flex-col ${
+              onClick={() => setQuickAdd(d)}
+              role="button"
+              className={`relative border-r border-b border-zinc-100 p-1.5 min-h-0 overflow-hidden flex flex-col cursor-pointer active:bg-zinc-50 ${
                 inMonth ? "" : "bg-zinc-50/60"
               }`}
             >
@@ -88,7 +92,7 @@ export function MonthView({
                   return (
                     <button
                       key={e.id}
-                      onClick={() => setOpenEvent(e)}
+                      onClick={(ev) => { ev.stopPropagation(); setOpenEvent(e); }}
                       className={`block w-full text-left text-xs px-1.5 py-0.5 rounded truncate ${color.bgSoft} ${color.text}`}
                     >
                       {e.all_day ? "" : format(new Date(e.start_ts * 1000), "h:mm") + " "}
@@ -104,6 +108,9 @@ export function MonthView({
 
       {openEvent && (
         <EventDetailSheet event={openEvent} members={members} onClose={() => setOpenEvent(null)} />
+      )}
+      {quickAdd && (
+        <QuickAddSheet day={quickAdd} hour={9} members={members} onClose={() => setQuickAdd(null)} />
       )}
     </div>
   );

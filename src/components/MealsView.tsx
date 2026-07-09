@@ -26,6 +26,7 @@ import {
 import { useRequestPin } from "./PinPad";
 import { useAdminAuth } from "./AdminGate";
 import { IconPicker } from "./IconPicker";
+import { useConfirm } from "./ConfirmProvider";
 
 const SLOTS: Array<{ key: MealSlot; label: string; icon: string }> = [
   { key: "breakfast", label: "Breakfast", icon: "🥣" },
@@ -1024,6 +1025,7 @@ function MealEditor({ meal, onClose }: { meal: Meal | null; onClose: () => void 
   // the save hangs. Mirror SettingsPanel's plain setPending/await pattern.
   const [pending, setPending] = useState(false);
   const { authenticate, modal } = useAdminAuth();
+  const { confirm } = useConfirm();
   const [name, setName] = useState(meal?.name ?? "");
   const [icon, setIcon] = useState(meal?.icon ?? "🍽️");
   const [notes, setNotes] = useState(meal?.notes ?? "");
@@ -1059,7 +1061,8 @@ function MealEditor({ meal, onClose }: { meal: Meal | null; onClose: () => void 
   };
 
   const del = async () => {
-    if (!meal || !confirm(`Delete "${meal.name}"?`)) return;
+    if (!meal) return;
+    if (!(await confirm({ title: "Delete meal?", message: `Delete “${meal.name}” from the library?`, confirmLabel: "Delete", danger: true }))) return;
     setPending(true);
     try {
       const ok = await authenticate((auth) => deleteMealAction(meal.id, auth));

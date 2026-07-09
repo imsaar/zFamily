@@ -16,6 +16,8 @@ import {
 } from "@/app/actions";
 import { Sheet } from "./Sheet";
 import { useRequestPin } from "./PinPad";
+import { useAdminAuth } from "./AdminGate";
+import { useConfirm } from "./ConfirmProvider";
 
 type PendingRow = ChoreCompletion & { chore: { id: number; title: string; icon: string | null; points: number; recurrence: string; active: number; created_at: number } };
 
@@ -545,38 +547,22 @@ function RewardsShelf({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const children = members.filter((m) => m.role === "child");
-  const parents = members.filter((m) => m.role === "parent");
   const [activeMember, setActiveMember] = useState<number | null>(children[0]?.id ?? null);
 
   const balance = activeMember != null ? (balances.get(activeMember) ?? 0) : 0;
 
-  const requestPin = useRequestPin();
+  // A parent authorizes the redemption (useAdminAuth handles the parent picker
+  // + PIN pad, so no native prompt/alert needed).
+  const { authenticate, modal } = useAdminAuth();
+  const { confirm } = useConfirm();
   const redeem = async (rewardId: number, cost: number) => {
     if (activeMember == null) return;
-    if (parents.length === 0) {
-      alert("Add a parent first — rewards need parent approval.");
-      return;
-    }
-    const chooseParent = () => {
-      if (parents.length === 1) return parents[0];
-      const labels = parents.map((p, i) => `${i + 1}. ${p.name}`).join("\n");
-      const raw = prompt(`Which parent is approving?\n${labels}\nEnter number:`);
-      const idx = Number(raw) - 1;
-      return parents[idx];
-    };
-    const approver = chooseParent();
-    if (!approver) return;
-    if (!confirm(`Redeem for ${cost} pts?`)) return;
+    if (!(await confirm({ title: "Redeem reward?", message: `Spend ${cost} points on this reward? A parent will approve it.`, confirmLabel: "Redeem" }))) return;
     setBusy(true);
     try {
-      const ok = await requestPin(approver, "Approve reward redemption", async (pin) => {
-        return await redeemRewardAction({
-          rewardId,
-          memberId: activeMember,
-          approvedBy: approver.id,
-          pin: pin || null,
-        });
-      });
+      const ok = await authenticate((auth) =>
+        redeemRewardAction({ rewardId, memberId: activeMember, approvedBy: auth.by, pin: auth.pin })
+      );
       if (ok) router.refresh();
     } finally {
       setBusy(false);
@@ -647,6 +633,7 @@ function RewardsShelf({
           })}
         </div>
       </div>
+      {modal}
     </Sheet>
   );
 }

@@ -54,19 +54,19 @@ export function WeekView({
         <div className="text-2xl font-semibold">{monthLabel}</div>
         <div className="flex items-center gap-2">
           <Link
-            href={`/?d=${prevWeek}`}
+            href={`/week?d=${prevWeek}`}
             className="w-12 h-12 rounded-full border border-zinc-200 flex items-center justify-center text-xl active:bg-zinc-100"
           >
             ‹
           </Link>
           <Link
-            href={`/?d=${todayStr}`}
+            href={`/week?d=${todayStr}`}
             className="px-5 h-12 rounded-full border border-zinc-200 flex items-center text-base active:bg-zinc-100"
           >
             Today
           </Link>
           <Link
-            href={`/?d=${nextWeek}`}
+            href={`/week?d=${nextWeek}`}
             className="w-12 h-12 rounded-full border border-zinc-200 flex items-center justify-center text-xl active:bg-zinc-100"
           >
             ›

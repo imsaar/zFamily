@@ -6,6 +6,7 @@ import { toggleCompletion, createChore, updateChore, deleteChore, verifyCompleti
 import { createMember, updateMember, deleteMember, setMemberPhoto, clearMemberPhoto } from "@/lib/members";
 import { factoryReset } from "@/lib/db";
 import { exportAllData, importAllData, saveBackupToDisk, listBackups, readStoredBackup, backupDir, defaultBackupDir } from "@/lib/backup";
+import { checkForUpdate, runUpdate, restartApp } from "@/lib/updater";
 import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting } from "@/lib/settings";
@@ -99,12 +100,18 @@ export async function createEventAction(input: {
   bust();
 }
 
+// Editing/deleting an event is parent-gated. Recurring instances arrive with a
+// virtual id ("<baseId>::<ts>"); operate on the underlying base event.
 export async function updateEventAction(
   id: string,
-  patch: { title?: string; start_ts?: number; end_ts?: number; member_id?: number | null; location?: string | null; notes?: string | null }
+  patch: { title?: string; start_ts?: number; end_ts?: number; member_id?: number | null; location?: string | null; notes?: string | null },
+  admin?: AdminAuth
 ) {
-  const existing = getEvent(id);
-  if (!existing) return;
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  const baseId = id.split("::")[0];
+  const existing = getEvent(baseId);
+  if (!existing) return { ok: false as const, reason: "not_found" as const };
   upsertEvent({
     ...existing,
     title: patch.title ?? existing.title,
@@ -115,11 +122,15 @@ export async function updateEventAction(
     notes: patch.notes !== undefined ? patch.notes : existing.notes,
   });
   bust();
+  return { ok: true as const };
 }
 
-export async function deleteEventAction(id: string) {
-  deleteEvent(id);
+export async function deleteEventAction(id: string, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  deleteEvent(id.split("::")[0]);
   bust();
+  return { ok: true as const };
 }
 
 export async function createMemberAction(input: { name: string; nickname?: string | null; color: MemberColor; emoji?: string | null; role?: MemberRole }, admin?: AdminAuth) {
@@ -245,6 +256,26 @@ export async function restoreStoredBackupAction(name: string, admin?: AdminAuth)
   resetWeatherCache();
   bust();
   return { ok: true as const, rows: r.rows ?? 0 };
+}
+
+// In-app software update (git pull + npm install + build) and service restart.
+// Parent-gated. The restart password is piped to sudo and never stored/logged.
+export async function checkForUpdateAction(admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  return await checkForUpdate();
+}
+
+export async function runUpdateAction(admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  return await runUpdate();
+}
+
+export async function restartAppAction(password: string, service: string, admin?: AdminAuth) {
+  const gate = await requireParentAuth(admin);
+  if (!gate.ok) return gate;
+  return await restartApp(password, service);
 }
 
 export async function importAllDataAction(backup: unknown, admin?: AdminAuth) {

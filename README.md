@@ -38,6 +38,8 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 - **Shopping list** — when a meal is placed on the plan you choose which of its ingredients get added (starts unselected), shared with the mobile companion.
 - **Emoji/icon picker** — a curated tap-to-choose icon grid everywhere an icon is set (members, chores, rewards, meals), with a "type your own" box for any emoji. A member's chosen icon (or a neutral person glyph) is their avatar until a headshot is uploaded.
 - **On-screen keyboard** (optional, Settings → Display) — a touch QWERTY that surfaces on a ⌨️ button when a text field is focused, for kiosks with no physical keyboard.
+- **Kiosk menu** — right-click / long-press anywhere on the wall display opens an app menu (refresh, connection check, sync, fullscreen, settings) instead of the browser's native context menu, which is suppressed. The mobile PWA keeps normal browser behavior.
+- **In-app software update** (Settings → Advanced) — a parent can pull the latest code, rebuild on the device, and restart, all from the wall display. All in-app confirmations use styled dialogs (no native `alert`/`confirm`).
 - **Quran verse context** — tap the verse-of-the-day reference to open the ayah in an in-app tanzil.net reader (Ali Quli Qarai translation); long verses are clamped with a "read the full ayah" link. Stays inside the app — no external browser window on the locked kiosk.
 - **PIN authentication** — 4-digit PIN per member with on-screen numeric keypad. Opening **Settings** unlocks once with a parent PIN, then saves don't re-prompt until you leave; chore verification still asks each time; adding a meal needs no PIN. Parents can reset a child's PIN without knowing the current one. First-launch gate forces parents to set a PIN.
 - **Personal views** at `/me/[memberId]` — each member has their own screen with their chores, schedule, meal vote panel, and rewards. Reverts to family home after configurable idle (default 2 min).
@@ -210,6 +212,23 @@ npm run update              # or: ./scripts/update.sh
 ```
 
 Useful flags: `BRANCH=main npm run update` to switch branch, `NO_RESTART=1` to build without restarting, `RELOAD_KIOSK=1` to also hard-reload the Chromium tab, `SERVICE=<name>` if your unit isn't `zfamily`.
+
+#### From inside the app (Settings → Advanced → Software update)
+
+A parent can **Check for updates** and **Update now** from the wall display — it runs the same `git pull → npm install → npm run build` on the device, shows the log, then prompts for the **system password** to restart the service (`sudo -S systemctl restart …`; the password is piped to sudo and never stored). For this to work on a systemd install:
+
+```bash
+# 1. The service user must OWN the checkout so it can pull & rebuild:
+sudo chown -R zfamily:zfamily /opt/zfamily
+
+# 2. Give it a password and a scoped sudo rule for just the restart command,
+#    so the password you type in the app authorizes only that:
+sudo passwd zfamily
+echo 'zfamily ALL=(ALL) PASSWD: /usr/bin/systemctl restart zfamily' | sudo tee /etc/sudoers.d/zfamily-restart
+sudo chmod 440 /etc/sudoers.d/zfamily-restart
+```
+
+The password you enter in the app is the **`zfamily` service account's** password (set in step 2), not your login password. Set the service name in the same panel if your unit isn't `zfamily`. Prefer the CLI `npm run update` for big jumps; the in-app updater is best for quick same-branch updates.
 
 <details><summary>Equivalent manual steps</summary>
 
