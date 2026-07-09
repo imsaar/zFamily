@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { Member, MemberColor, MemberRole } from "@/lib/types";
 import { COLOR_CLASSES, MEMBER_COLORS, memberGlyph, displayName } from "@/lib/types";
@@ -23,6 +23,9 @@ import {
   factoryResetAction,
   exportAllDataAction,
   importAllDataAction,
+  saveBackupToDiskAction,
+  listBackupsAction,
+  restoreStoredBackupAction,
   setMemberPhotoAction,
   clearMemberPhotoAction,
   createIcalFeedAction,
@@ -87,7 +90,7 @@ export function SettingsPanel({
         {tab === "calendars" && <CalendarsTab feeds={feeds} members={members} />}
         {tab === "weather" && <WeatherTab settings={settings} />}
         {tab === "display" && <DisplayTab settings={settings} />}
-        {tab === "advanced" && <AdvancedTab />}
+        {tab === "advanced" && <AdvancedTab settings={settings} />}
       </div>
     </div>
   );
@@ -1425,12 +1428,107 @@ function syncStatus(f: IcalFeed): string {
   return `synced ${rel}${f.last_event_count != null ? ` · ${f.last_event_count} events` : ""}`;
 }
 
-function AdvancedTab() {
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function AdvancedTab({ settings }: { settings: Record<string, string> }) {
   const router = useRouter();
   const { authenticate, modal } = useSettingsAuth();
   const [pending, setPending] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [backupMsg, setBackupMsg] = useState<string | null>(null);
+  const [pathInput, setPathInput] = useState(settings.backup_dir ?? "");
+  const [autoOn, setAutoOn] = useState((settings.auto_backup ?? "true") !== "false");
+  const [autoInterval, setAutoInterval] = useState(settings.auto_backup_interval ?? "weekly");
+  const autoLastAt = Number(settings.auto_backup_last ?? 0);
+  const [store, setStore] = useState<{ dir: string; defaultDir: string; backups: Array<{ name: string; size: number; savedAt: number }> } | null>(null);
+
+  const saveAuto = async () => {
+    setBackupMsg(null);
+    setBackupBusy(true);
+    try {
+      const ok = await authenticate(async (auth) => {
+        let r = await updateSettingAction("auto_backup", String(autoOn), auth);
+        if (!r.ok) return r;
+        r = await updateSettingAction("auto_backup_interval", autoInterval, auth);
+        return r;
+      });
+      if (ok) setBackupMsg(autoOn ? `Auto-backup on — ${autoInterval}.` : "Auto-backup off.");
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const loadBackups = async () => {
+    const holder: { v: typeof store } = { v: null };
+    await authenticate(async (auth) => {
+      const r = await listBackupsAction(auth);
+      if (r.ok) holder.v = { dir: r.dir, defaultDir: r.defaultDir, backups: r.backups };
+      return r;
+    });
+    if (holder.v) setStore(holder.v);
+  };
+
+  useEffect(() => {
+    void loadBackups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const savePath = async () => {
+    setBackupMsg(null);
+    setBackupBusy(true);
+    try {
+      const ok = await authenticate((auth) => updateSettingAction("backup_dir", pathInput.trim(), auth));
+      if (ok) {
+        await loadBackups();
+        setBackupMsg("Backup location saved.");
+      }
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const saveToDisk = async () => {
+    setBackupMsg(null);
+    setBackupBusy(true);
+    try {
+      const holder: { v: { name: string; path: string; bytes: number } | null } = { v: null };
+      const ok = await authenticate(async (auth) => {
+        const r = await saveBackupToDiskAction(auth);
+        if (r.ok) holder.v = { name: r.name, path: r.path, bytes: r.bytes };
+        return r;
+      });
+      if (ok && holder.v) {
+        setBackupMsg(`Saved ${holder.v.name} (${fmtBytes(holder.v.bytes)}) → ${holder.v.path}`);
+        await loadBackups();
+      } else {
+        setBackupMsg("Couldn’t save backup — check the backup location exists and is writable.");
+      }
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const restoreStored = async (name: string) => {
+    if (!confirm(`Restore "${name}"? This REPLACES all current data and cannot be undone.`)) return;
+    setBackupBusy(true);
+    setBackupMsg(null);
+    try {
+      const ok = await authenticate((auth) => restoreStoredBackupAction(name, auth));
+      if (ok) {
+        setBackupMsg("Restored — reloading…");
+        window.location.href = "/";
+      } else {
+        setBackupMsg("Restore failed — that backup couldn’t be read.");
+        setBackupBusy(false);
+      }
+    } catch {
+      setBackupBusy(false);
+    }
+  };
 
   const exportData = async () => {
     setBackupMsg(null);
@@ -1538,10 +1636,100 @@ function AdvancedTab() {
             />
           </label>
         </div>
-        {backupMsg && <p className="text-sm text-zinc-600 mt-3">{backupMsg}</p>}
+        {backupMsg && <p className="text-sm text-zinc-600 mt-3 break-words">{backupMsg}</p>}
         <p className="text-xs text-zinc-400 mt-3">
           The backup file contains PINs and linked-account tokens — treat it like a password.
         </p>
+
+        <div className="mt-6 pt-6 border-t border-zinc-200">
+          <div className="text-sm font-medium text-zinc-700">Save backups on this device</div>
+          <p className="text-xs text-zinc-500 mt-1 mb-3">
+            Backups are written to this folder on the device. Leave blank to use the default
+            {store ? <> (<code className="text-zinc-600">{store.defaultDir}</code>)</> : " (a “backups” folder in the data directory)"}.
+          </p>
+          <div className="flex flex-wrap gap-2 items-center">
+            <input
+              value={pathInput}
+              onChange={(e) => setPathInput(e.target.value)}
+              placeholder={store?.defaultDir ?? "/var/lib/zfamily/backups"}
+              className="flex-1 min-w-[240px] px-4 py-2.5 border border-zinc-300 rounded-xl text-sm"
+            />
+            <button onClick={savePath} disabled={backupBusy} className="px-4 py-2.5 rounded-xl border-2 border-zinc-300 text-sm font-medium disabled:opacity-50">
+              Save location
+            </button>
+            <button onClick={saveToDisk} disabled={backupBusy} className="px-4 py-2.5 rounded-xl bg-zinc-900 text-white text-sm font-medium disabled:opacity-50">
+              💾 Save backup now
+            </button>
+          </div>
+          {store && store.dir !== (pathInput.trim() || store.defaultDir) && (
+            <p className="text-xs text-amber-600 mt-2">Unsaved location change — tap “Save location” to apply.</p>
+          )}
+
+          <div className="mt-5 rounded-xl bg-zinc-50 border border-zinc-200 p-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-sm font-medium">🔁 Automatic backup</div>
+                <div className="text-xs text-zinc-500 mt-0.5">
+                  Periodically save a backup to the folder above.
+                  {autoLastAt > 0 && <> Last: {new Date(autoLastAt * 1000).toLocaleString()}.</>}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                {([["on", true], ["off", false]] as const).map(([label, val]) => (
+                  <button
+                    key={label}
+                    onClick={() => setAutoOn(val)}
+                    className={`px-4 py-1.5 rounded-full border-2 text-sm ${autoOn === val ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200"}`}
+                  >
+                    {label === "on" ? "On" : "Off"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {autoOn && (
+              <div className="mt-3 flex items-center gap-2 flex-wrap">
+                <span className="text-sm text-zinc-600">Every</span>
+                {(["daily", "weekly", "monthly"] as const).map((iv) => (
+                  <button
+                    key={iv}
+                    onClick={() => setAutoInterval(iv)}
+                    className={`px-4 py-1.5 rounded-full border-2 text-sm capitalize ${autoInterval === iv ? "bg-zinc-900 border-zinc-900 text-white" : "border-zinc-200"}`}
+                  >
+                    {iv === "daily" ? "Day" : iv === "weekly" ? "Week" : "Month"}
+                  </button>
+                ))}
+              </div>
+            )}
+            <button onClick={saveAuto} disabled={backupBusy} className="mt-3 px-4 py-2 rounded-xl border-2 border-zinc-300 text-sm font-medium disabled:opacity-50">
+              Save auto-backup settings
+            </button>
+          </div>
+
+          {store && store.backups.length > 0 && (
+            <div className="mt-4">
+              <div className="text-xs uppercase tracking-wider text-zinc-400 mb-2">Stored backups ({store.backups.length})</div>
+              <ul className="space-y-1.5 max-h-56 overflow-y-auto">
+                {store.backups.map((b) => (
+                  <li key={b.name} className="flex items-center gap-3 text-sm rounded-lg border border-zinc-200 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-medium truncate">{b.name}</div>
+                      <div className="text-xs text-zinc-500 tabular-nums">
+                        {new Date(b.savedAt * 1000).toLocaleString()} · {fmtBytes(b.size)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => restoreStored(b.name)}
+                      disabled={backupBusy}
+                      className="shrink-0 px-3 py-1.5 rounded-lg border border-zinc-300 text-sm disabled:opacity-50"
+                    >
+                      Restore
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="rounded-2xl border-2 border-red-200 bg-red-50 p-6">

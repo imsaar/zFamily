@@ -110,9 +110,11 @@ npm run build
 
 ```bash
 sudo useradd -r -s /bin/false zfamily
-sudo mkdir -p /var/lib/zfamily
-sudo chown zfamily:zfamily /var/lib/zfamily
+sudo mkdir -p /var/lib/zfamily/backups          # data dir + default on-device backups folder
+sudo chown -R zfamily:zfamily /var/lib/zfamily  # the service writes backups here
 ```
+
+The `backups/` subfolder is where **Save backup now** and the periodic **auto-backup** write files (see [Data & backup](#data--backup)). It must be writable by the `zfamily` user. To store backups elsewhere (e.g. a mounted USB drive or NAS share), create that directory, `chown` it to `zfamily`, and set the path in **Settings → Advanced → Backup & restore**.
 
 ### 3. systemd unit for the server
 
@@ -350,9 +352,11 @@ Tables:
 **Settings → ⚠️ Advanced → 💾 Backup & restore** lets a parent, right from the wall display:
 
 - **Export backup** — downloads a single `zfamily-backup-YYYY-MM-DD.json` file with **all** data (members + headshot photos, chores and completions, events, meal plans/shopping, rewards, PINs, and settings; photos are base64-embedded).
-- **Restore from backup** — upload a backup file to **replace everything** currently on the device (runs in one transaction, so a bad file leaves your data untouched). The app reloads when done.
+- **Restore from backup** — upload a backup file to **replace everything** currently on the device (runs in one transaction, so a bad file leaves your data untouched). The app reloads when done. This is also offered on the first-run / after-erase **Welcome** screen.
+- **Save on device** — write timestamped backups to a folder on the device instead of downloading. Defaults to `${ZFAMILY_DATA_DIR}/backups` (e.g. `/var/lib/zfamily/backups`); set a custom path (USB/NAS) in the same panel. Stored backups are listed with a one-tap **Restore**.
+- **Automatic backup** — on by default, **weekly** (also daily/monthly). Runs off the always-on kiosk's periodic sync, keeps the most recent 12 auto-backups, and skips when there's no family yet. Toggle/interval live in the same panel.
 
-The backup file contains PIN hashes and linked-account tokens — treat it like a password.
+Backup files contain PIN hashes and linked-account tokens — treat them like passwords, and pick a backup folder with matching access controls.
 
 ### Backing up (file-level)
 

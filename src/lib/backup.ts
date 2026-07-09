@@ -1,5 +1,8 @@
+import fs from "node:fs";
+import path from "node:path";
 import type Database from "better-sqlite3";
-import { db } from "./db";
+import { db, dataDir } from "./db";
+import { getSetting, setSetting } from "./settings";
 
 /**
  * Full-database backup as portable JSON. Every user table is dumped generically
@@ -36,6 +39,113 @@ function decodeValue(v: unknown): unknown {
     return Buffer.from(String((v as { __b64: unknown }).__b64), "base64");
   }
   return v;
+}
+
+/** Default backups location: a `backups` folder inside the data directory. */
+export function defaultBackupDir(): string {
+  return path.join(dataDir(), "backups");
+}
+
+/** Where backups are written — the `backup_dir` setting if set, else the default. */
+export function backupDir(): string {
+  return getSetting("backup_dir")?.trim() || defaultBackupDir();
+}
+
+export type SavedBackup = { name: string; size: number; savedAt: number };
+
+/** Write a full backup as a timestamped JSON file into the backup directory. */
+export function saveBackupToDisk(prefix = "zfamily-backup"): { ok: boolean; reason?: string; name?: string; path?: string; bytes?: number } {
+  const dir = backupDir();
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19); // 2026-07-09T12-30-00
+    const name = `${prefix}-${stamp}.json`;
+    const file = path.join(dir, name);
+    const json = JSON.stringify(exportAllData());
+    fs.writeFileSync(file, json);
+    return { ok: true, name, path: file, bytes: Buffer.byteLength(json) };
+  } catch (e) {
+    return { ok: false, reason: e instanceof Error ? e.message : "write_failed" };
+  }
+}
+
+// ── Periodic auto-backup ─────────────────────────────────────────────
+const AUTO_PREFIX = "zfamily-autobackup";
+const AUTO_KEEP = 12; // keep the most recent N auto-backups
+const AUTO_INTERVAL_SECONDS: Record<string, number> = {
+  daily: 86_400,
+  weekly: 7 * 86_400,
+  monthly: 30 * 86_400,
+};
+
+/** Whether auto-backup is on (default true) and how often (default weekly). */
+export function autoBackupConfig(): { enabled: boolean; interval: string; lastAt: number } {
+  return {
+    enabled: (getSetting("auto_backup") ?? "true") === "true",
+    interval: getSetting("auto_backup_interval") ?? "weekly",
+    lastAt: Number(getSetting("auto_backup_last") ?? 0),
+  };
+}
+
+function pruneAutoBackups(keep: number) {
+  try {
+    const dir = backupDir();
+    const files = fs
+      .readdirSync(dir)
+      .filter((n) => n.startsWith(AUTO_PREFIX) && n.endsWith(".json"))
+      .map((n) => ({ n, t: fs.statSync(path.join(dir, n)).mtimeMs }))
+      .sort((a, b) => b.t - a.t);
+    for (const f of files.slice(keep)) fs.unlinkSync(path.join(dir, f.n));
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** Create an auto-backup if enabled and the interval has elapsed. Cheap to call
+ *  frequently (from the sync endpoints) — only writes when actually due. Skips
+ *  when there's no family yet (nothing worth backing up). */
+export function maybeAutoBackup(): { backedUp: boolean; name?: string } {
+  const cfg = autoBackupConfig();
+  if (!cfg.enabled) return { backedUp: false };
+  const secs = AUTO_INTERVAL_SECONDS[cfg.interval] ?? AUTO_INTERVAL_SECONDS.weekly;
+  const now = Math.floor(Date.now() / 1000);
+  if (cfg.lastAt && now - cfg.lastAt < secs) return { backedUp: false };
+  const hasFamily = ((db().prepare("SELECT COUNT(*) as n FROM members").get() as { n: number }).n) > 0;
+  if (!hasFamily) return { backedUp: false };
+  const r = saveBackupToDisk(AUTO_PREFIX);
+  if (!r.ok) return { backedUp: false };
+  setSetting("auto_backup_last", String(now));
+  pruneAutoBackups(AUTO_KEEP);
+  return { backedUp: true, name: r.name };
+}
+
+/** List backup files currently stored in the backup directory (newest first). */
+export function listBackups(): SavedBackup[] {
+  const dir = backupDir();
+  try {
+    return fs
+      .readdirSync(dir)
+      .filter((n) => n.endsWith(".json"))
+      .map((n) => {
+        const st = fs.statSync(path.join(dir, n));
+        return { name: n, size: st.size, savedAt: Math.floor(st.mtimeMs / 1000) };
+      })
+      .sort((a, b) => b.savedAt - a.savedAt);
+  } catch {
+    return [];
+  }
+}
+
+/** Parse a stored backup file by name (basename only — no path traversal). */
+export function readStoredBackup(name: string): Backup | null {
+  const safe = path.basename(name);
+  if (!safe.endsWith(".json")) return null;
+  try {
+    const raw = fs.readFileSync(path.join(backupDir(), safe), "utf8");
+    return JSON.parse(raw) as Backup;
+  } catch {
+    return null;
+  }
 }
 
 export function exportAllData(): Backup {
