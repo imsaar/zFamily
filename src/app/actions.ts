@@ -220,8 +220,14 @@ export async function exportAllDataAction(admin?: AdminAuth) {
 }
 
 export async function importAllDataAction(backup: unknown, admin?: AdminAuth) {
-  const gate = await requireParentAuth(admin);
-  if (!gate.ok) return gate;
+  // Bootstrap exception: on a fresh/erased device (no members yet) restoring is
+  // allowed without a parent PIN — there's no parent to authorize it. Once data
+  // exists (restore from Settings), require parent auth.
+  const hasAny = ((await import("@/lib/db")).db().prepare("SELECT COUNT(*) as n FROM members").get() as { n: number }).n > 0;
+  if (hasAny) {
+    const gate = await requireParentAuth(admin);
+    if (!gate.ok) return gate;
+  }
   const r = importAllData(backup);
   if (!r.ok) return { ok: false as const, reason: r.reason ?? "import_failed" };
   resetWeatherCache();

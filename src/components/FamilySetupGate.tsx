@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { MemberColor, MemberRole } from "@/lib/types";
 import { COLOR_CLASSES, MEMBER_COLORS } from "@/lib/types";
 import type { GeocodeResult } from "@/lib/geocode";
-import { completeFamilySetupAction, searchCityAction } from "@/app/actions";
+import { completeFamilySetupAction, searchCityAction, importAllDataAction } from "@/app/actions";
 import { IconPicker } from "./IconPicker";
 
 type Draft = {
@@ -34,6 +34,34 @@ export function FamilySetupGate() {
   const [weather, setWeather] = useState<{ label: string; lat: string; lon: string; tz: string } | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(false);
+
+  const restore = async (file: File | null) => {
+    if (!file) return;
+    setError(null);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(await file.text());
+    } catch {
+      setError("That file isn’t a valid backup (couldn’t read JSON).");
+      return;
+    }
+    if (!confirm("Restore this backup? It will set up the family and all data from the file.")) return;
+    setRestoring(true);
+    try {
+      const r = await importAllDataAction(parsed);
+      if (r.ok) {
+        // Everything is loaded — reload into the restored app.
+        window.location.href = "/";
+      } else {
+        setError("Restore failed — that file may not be a zFamily backup.");
+        setRestoring(false);
+      }
+    } catch {
+      setError("Something went wrong restoring the backup.");
+      setRestoring(false);
+    }
+  };
 
   const named = members.filter((m) => m.name.trim());
   const hasParent = named.some((m) => m.role === "parent");
@@ -82,10 +110,29 @@ export function FamilySetupGate() {
             </p>
             <button
               onClick={() => setStep("members")}
-              className="px-8 py-4 rounded-2xl bg-zinc-900 text-white text-xl font-medium"
+              disabled={restoring}
+              className="px-8 py-4 rounded-2xl bg-zinc-900 text-white text-xl font-medium disabled:opacity-50"
             >
               Get started
             </button>
+
+            <div className="mt-8 text-zinc-500">
+              <span>Already have a backup? </span>
+              <label className={`text-zinc-900 font-medium underline underline-offset-2 cursor-pointer ${restoring ? "opacity-50 pointer-events-none" : ""}`}>
+                {restoring ? "Restoring…" : "Restore from a backup"}
+                <input
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  disabled={restoring}
+                  onChange={(e) => {
+                    restore(e.target.files?.[0] ?? null);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {error && <p className="mt-4 text-red-600">{error}</p>}
           </div>
         )}
 
