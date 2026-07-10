@@ -38,6 +38,7 @@ import {
   syncIcalFeedsAction,
 } from "@/app/actions";
 import type { GeocodeResult } from "@/lib/geocode";
+import { cityLabel } from "@/lib/address";
 import type { IcalFeed } from "@/lib/ical";
 import { Sheet } from "./Sheet";
 import { useSettingsAuth } from "./SettingsAuth";
@@ -936,8 +937,7 @@ function WeatherTab({ settings }: { settings: Record<string, string> }) {
   };
 
   const pick = (r: GeocodeResult) => {
-    const bits = [r.name, r.admin1, r.countryCode].filter(Boolean).join(", ");
-    setLabel(bits);
+    setLabel(cityLabel(r));
     setLat(r.latitude.toFixed(4));
     setLon(r.longitude.toFixed(4));
     setTz(r.timezone);

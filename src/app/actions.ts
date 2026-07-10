@@ -11,6 +11,7 @@ import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting, getSetting } from "@/lib/settings";
 import { computeCommute, geocodeAddress, searchAddresses, cityStateLabel, type CommuteMode } from "@/lib/commute";
+import { cityStateFromText, looksLikeStreet } from "@/lib/address";
 import { requirePin, setMemberPin, clearMemberPin, memberHasPin, verifyMemberPin } from "@/lib/pins";
 import { searchCity } from "@/lib/geocode";
 import { resetWeatherCache } from "@/lib/weather";
@@ -601,7 +602,11 @@ export async function setHomeAddressAction(address: string, admin?: AdminAuth) {
   // address). Timezone falls back to "auto" in the weather fetch if unset.
   setSetting("weather_lat", String(geo.lat));
   setSetting("weather_lon", String(geo.lon));
-  setSetting("weather_label", cityStateLabel(geo));
+  // Prefer the geocoder's structured city/state; if it didn't return one, parse
+  // the city/state out of what the user typed so we never fall back to a street.
+  let label = cityStateLabel(geo);
+  if (looksLikeStreet(label)) label = cityStateFromText(a) ?? label;
+  setSetting("weather_label", label);
   resetWeatherCache();
   bust();
   return { ok: true as const, resolved: geo.display };
