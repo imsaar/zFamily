@@ -24,27 +24,72 @@ async function fetchJson(url: string, headers: Record<string, string> = {}, ms =
   }
 }
 
-export type GeoResult = { lat: number; lon: number; display: string };
+export type GeoResult = { lat: number; lon: number; display: string; city?: string; state?: string };
+
+const US_STATE_ABBR: Record<string, string> = {
+  alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO",
+  connecticut: "CT", delaware: "DE", "district of columbia": "DC", florida: "FL", georgia: "GA",
+  hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY",
+  louisiana: "LA", maine: "ME", maryland: "MD", massachusetts: "MA", michigan: "MI", minnesota: "MN",
+  mississippi: "MS", missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH",
+  "new jersey": "NJ", "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND",
+  ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC",
+  "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT", virginia: "VA",
+  washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY",
+};
+
+function titleCase(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+/** A short "City, ST" label from a geocode result (falls back to the address). */
+export function cityStateLabel(geo: GeoResult): string {
+  const city = geo.city?.trim() ? titleCase(geo.city.trim()) : undefined;
+  let state = geo.state?.trim();
+  if (state && US_STATE_ABBR[state.toLowerCase()]) state = US_STATE_ABBR[state.toLowerCase()];
+  if (city && state) return `${city}, ${state.toUpperCase().length === 2 ? state.toUpperCase() : state}`;
+  if (city) return city;
+  return geo.display.split(",").slice(0, 2).join(", ").trim() || geo.display;
+}
 
 // US Census geocoder — excellent for US residential street addresses (which
 // OpenStreetMap/Nominatim often lacks). US-only.
 async function censusSearch(query: string): Promise<GeoResult[]> {
   const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=${encodeURIComponent(query)}`;
-  const data = (await fetchJson(url)) as { result?: { addressMatches?: Array<{ matchedAddress?: string; coordinates?: { x?: number; y?: number } }> } } | null;
+  const data = (await fetchJson(url)) as {
+    result?: { addressMatches?: Array<{ matchedAddress?: string; coordinates?: { x?: number; y?: number }; addressComponents?: { city?: string; state?: string } }> };
+  } | null;
   const matches = data?.result?.addressMatches;
   if (!Array.isArray(matches)) return [];
   return matches
-    .map((m) => ({ lat: Number(m.coordinates?.y), lon: Number(m.coordinates?.x), display: String(m.matchedAddress ?? "") }))
+    .map((m) => ({
+      lat: Number(m.coordinates?.y),
+      lon: Number(m.coordinates?.x),
+      display: String(m.matchedAddress ?? ""),
+      city: m.addressComponents?.city,
+      state: m.addressComponents?.state,
+    }))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon) && r.display);
 }
 
 // Nominatim (OpenStreetMap) — good for place/business names, POIs, and non-US.
 async function nominatimSearch(query: string, limit: number): Promise<GeoResult[]> {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=${limit}&q=${encodeURIComponent(query)}`;
-  const data = (await fetchJson(url, { "User-Agent": UA, "Accept-Language": "en" })) as Array<{ lat: string; lon: string; display_name: string }> | null;
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=${limit}&q=${encodeURIComponent(query)}`;
+  const data = (await fetchJson(url, { "User-Agent": UA, "Accept-Language": "en" })) as Array<{
+    lat: string; lon: string; display_name: string;
+    address?: { city?: string; town?: string; village?: string; hamlet?: string; municipality?: string; state?: string };
+  }> | null;
   if (!Array.isArray(data)) return [];
   return data
-    .map((d) => ({ lat: Number(d.lat), lon: Number(d.lon), display: d.display_name }))
+    .map((d) => ({
+      lat: Number(d.lat),
+      lon: Number(d.lon),
+      display: d.display_name,
+      city: d.address?.city ?? d.address?.town ?? d.address?.village ?? d.address?.hamlet ?? d.address?.municipality,
+      state: d.address?.state,
+    }))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon));
 }
 

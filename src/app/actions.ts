@@ -10,7 +10,7 @@ import { checkForUpdate, runUpdate, restartApp } from "@/lib/updater";
 import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting, getSetting } from "@/lib/settings";
-import { computeCommute, geocodeAddress, searchAddresses, type CommuteMode } from "@/lib/commute";
+import { computeCommute, geocodeAddress, searchAddresses, cityStateLabel, type CommuteMode } from "@/lib/commute";
 import { requirePin, setMemberPin, clearMemberPin, memberHasPin, verifyMemberPin } from "@/lib/pins";
 import { searchCity } from "@/lib/geocode";
 import { resetWeatherCache } from "@/lib/weather";
@@ -597,11 +597,11 @@ export async function setHomeAddressAction(address: string, admin?: AdminAuth) {
   setSetting("home_address", a);
   setSetting("home_lat", String(geo.lat));
   setSetting("home_lon", String(geo.lon));
-  // Use the home location for weather too (label from the first address part;
-  // timezone falls back to "auto" in the weather fetch if unset).
+  // Use the home location for weather too — label as "City, ST" (not the street
+  // address). Timezone falls back to "auto" in the weather fetch if unset.
   setSetting("weather_lat", String(geo.lat));
   setSetting("weather_lon", String(geo.lon));
-  setSetting("weather_label", a.split(",")[0].trim() || a);
+  setSetting("weather_label", cityStateLabel(geo));
   resetWeatherCache();
   bust();
   return { ok: true as const, resolved: geo.display };
