@@ -9,11 +9,14 @@ import { getSetting } from "./settings";
 
 const UA = "zFamily/1.0 (self-hosted family calendar)";
 
-async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+// Fetch JSON with a real abort timeout (returns null on any failure).
+async function fetchJson(url: string, headers: Record<string, string> = {}, ms = 8000): Promise<unknown> {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
   try {
-    return await p;
+    const res = await fetch(url, { headers, cache: "no-store", signal: ctrl.signal });
+    if (!res.ok) return null;
+    return await res.json();
   } catch {
     return null;
   } finally {
@@ -23,40 +26,54 @@ async function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
 
 export type GeoResult = { lat: number; lon: number; display: string };
 
-/** Geocode a free-text address to coordinates via Nominatim. */
-export async function geocodeAddress(address: string): Promise<GeoResult | null> {
-  const q = address.trim();
-  if (!q) return null;
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}`;
-  const res = await withTimeout(
-    fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "en" }, cache: "no-store" }),
-    8000
-  );
-  if (!res || !res.ok) return null;
-  const data = (await res.json().catch(() => null)) as Array<{ lat: string; lon: string; display_name: string }> | null;
-  const first = data?.[0];
-  if (!first) return null;
-  const lat = Number(first.lat);
-  const lon = Number(first.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  return { lat, lon, display: first.display_name };
+// US Census geocoder — excellent for US residential street addresses (which
+// OpenStreetMap/Nominatim often lacks). US-only.
+async function censusSearch(query: string): Promise<GeoResult[]> {
+  const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?benchmark=Public_AR_Current&format=json&address=${encodeURIComponent(query)}`;
+  const data = (await fetchJson(url)) as { result?: { addressMatches?: Array<{ matchedAddress?: string; coordinates?: { x?: number; y?: number } }> } } | null;
+  const matches = data?.result?.addressMatches;
+  if (!Array.isArray(matches)) return [];
+  return matches
+    .map((m) => ({ lat: Number(m.coordinates?.y), lon: Number(m.coordinates?.x), display: String(m.matchedAddress ?? "") }))
+    .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon) && r.display);
 }
 
-/** Search addresses/places by a typed name (up to 6 matches) via Nominatim. */
-export async function searchAddresses(query: string): Promise<GeoResult[]> {
-  const q = query.trim();
-  if (q.length < 3) return [];
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q=${encodeURIComponent(q)}`;
-  const res = await withTimeout(
-    fetch(url, { headers: { "User-Agent": UA, "Accept-Language": "en" }, cache: "no-store" }),
-    8000
-  );
-  if (!res || !res.ok) return [];
-  const data = (await res.json().catch(() => null)) as Array<{ lat: string; lon: string; display_name: string }> | null;
-  if (!data) return [];
+// Nominatim (OpenStreetMap) — good for place/business names, POIs, and non-US.
+async function nominatimSearch(query: string, limit: number): Promise<GeoResult[]> {
+  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=${limit}&q=${encodeURIComponent(query)}`;
+  const data = (await fetchJson(url, { "User-Agent": UA, "Accept-Language": "en" })) as Array<{ lat: string; lon: string; display_name: string }> | null;
+  if (!Array.isArray(data)) return [];
   return data
     .map((d) => ({ lat: Number(d.lat), lon: Number(d.lon), display: d.display_name }))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon));
+}
+
+/** Best-match coordinates for an address: US Census first (precise US street
+ *  addresses), Nominatim fallback (places/POIs, non-US). */
+export async function geocodeAddress(address: string): Promise<GeoResult | null> {
+  const q = address.trim();
+  if (!q) return null;
+  const census = await censusSearch(q);
+  if (census[0]) return census[0];
+  const nomin = await nominatimSearch(q, 1);
+  return nomin[0] ?? null;
+}
+
+/** Candidate matches for a typed name/address (Census + Nominatim, deduped). */
+export async function searchAddresses(query: string): Promise<GeoResult[]> {
+  const q = query.trim();
+  if (q.length < 3) return [];
+  const [census, nomin] = await Promise.all([censusSearch(q), nominatimSearch(q, 5)]);
+  const seen = new Set<string>();
+  const out: GeoResult[] = [];
+  for (const r of [...census, ...nomin]) {
+    const key = r.display.toLowerCase().replace(/\s+/g, " ").trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+    if (out.length >= 6) break;
+  }
+  return out;
 }
 
 /** The commute origin: the geocoded home address, else the weather location. */
@@ -82,9 +99,7 @@ export async function computeCommute(address: string, mode: CommuteMode = "car")
   if (!dest) return null;
   // OSRM uses lon,lat order. overview=false still returns duration + distance.
   const url = `https://router.project-osrm.org/route/v1/driving/${home.lon},${home.lat};${dest.lon},${dest.lat}?overview=false`;
-  const res = await withTimeout(fetch(url, { headers: { "User-Agent": UA }, cache: "no-store" }), 8000);
-  if (!res || !res.ok) return null;
-  const data = (await res.json().catch(() => null)) as {
+  const data = (await fetchJson(url, { "User-Agent": UA })) as {
     code?: string;
     routes?: Array<{ duration: number; distance: number }>;
   } | null;
