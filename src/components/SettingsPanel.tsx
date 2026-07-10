@@ -1077,6 +1077,7 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
   );
   const [hijriOffset, setHijriOffset] = useState(String(Number(settings.hijri_offset ?? "0")));
   const [commuteMode, setCommuteMode] = useState(settings.commute_mode === "bus" ? "bus" : "car");
+  const [placesKey, setPlacesKey] = useState(settings.google_places_key ?? "");
   const [homeAddr, setHomeAddr] = useState(settings.home_address ?? "");
   const [homeBusy, setHomeBusy] = useState(false);
   const [homeMsg, setHomeMsg] = useState<string | null>(null);
@@ -1117,6 +1118,7 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
           ["personal_idle_seconds", String(Math.max(30, Number(personalIdleMin) * 60))],
           ["hijri_offset", String(Math.max(-3, Math.min(3, Number(hijriOffset) || 0)))],
           ["commute_mode", commuteMode],
+          ["google_places_key", placesKey.trim()],
         ];
         for (const [k, v] of updates) {
           const r = await updateSettingAction(k, v, auth);
@@ -1244,6 +1246,21 @@ function DisplayTab({ settings }: { settings: Record<string, string> }) {
             ))}
           </div>
           <p className="text-xs text-zinc-500 mt-1">Bus is a rough distance-based estimate. Saved with the button below.</p>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-sm font-medium text-zinc-700">Google Places API key (optional)</div>
+          <p className="text-xs text-zinc-500 mt-0.5 mb-1.5">
+            Lets you find businesses/places by name (e.g. a church or restaurant). Without it, location search only
+            covers street addresses (US Census) and well-known places (OpenStreetMap). Saved with the button below.
+          </p>
+          <input
+            type="password"
+            value={placesKey}
+            onChange={(e) => setPlacesKey(e.target.value)}
+            placeholder="AIza…"
+            className="w-full px-4 py-2.5 border border-zinc-300 rounded-xl text-sm"
+          />
         </div>
       </div>
 

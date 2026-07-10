@@ -93,25 +93,67 @@ async function nominatimSearch(query: string, limit: number): Promise<GeoResult[
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon));
 }
 
-/** Best-match coordinates for an address: US Census first (precise US street
- *  addresses), Nominatim fallback (places/POIs, non-US). */
+function googleKey(): string {
+  return getSetting("google_places_key")?.trim() || "";
+}
+
+// Parse "…, City, ST 98037, USA" → { city, state } (best effort, US).
+function parseUsCityState(addr: string): { city?: string; state?: string } {
+  const parts = addr.split(",").map((s) => s.trim()).filter(Boolean);
+  const usIdx = parts.findIndex((p) => /^(usa|united states)$/i.test(p));
+  const end = usIdx > 0 ? usIdx : parts.length;
+  const stateZip = parts[end - 1] ?? "";
+  const st = stateZip.split(/\s+/)[0];
+  const city = parts[end - 2];
+  return { city, state: /^[A-Z]{2}$/.test(st) ? st : undefined };
+}
+
+// Google Places Text Search — finds businesses/POIs by name (needs an API key).
+async function googlePlacesSearch(query: string, limit: number): Promise<GeoResult[]> {
+  const key = googleKey();
+  if (!key) return [];
+  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${key}`;
+  const data = (await fetchJson(url)) as { results?: Array<{ name?: string; formatted_address?: string; geometry?: { location?: { lat?: number; lng?: number } } }> } | null;
+  const results = data?.results;
+  if (!Array.isArray(results)) return [];
+  return results
+    .slice(0, limit)
+    .map((r) => {
+      const loc = r.geometry?.location;
+      const addr = r.formatted_address ?? "";
+      const { city, state } = parseUsCityState(addr);
+      const display = r.name && addr ? `${r.name}, ${addr}` : (addr || r.name || "");
+      return { lat: Number(loc?.lat), lon: Number(loc?.lng), display, city, state };
+    })
+    .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon) && r.display);
+}
+
+/** Best-match coordinates for an address: Google Places (if a key is set) →
+ *  US Census (precise US street addresses) → Nominatim (places/POIs, non-US). */
 export async function geocodeAddress(address: string): Promise<GeoResult | null> {
   const q = address.trim();
   if (!q) return null;
+  const google = await googlePlacesSearch(q, 1);
+  if (google[0]) return google[0];
   const census = await censusSearch(q);
   if (census[0]) return census[0];
   const nomin = await nominatimSearch(q, 1);
   return nomin[0] ?? null;
 }
 
-/** Candidate matches for a typed name/address (Census + Nominatim, deduped). */
+/** Candidate matches for a typed name/address (Google Places if keyed, plus
+ *  Census + Nominatim), deduped. */
 export async function searchAddresses(query: string): Promise<GeoResult[]> {
   const q = query.trim();
   if (q.length < 3) return [];
-  const [census, nomin] = await Promise.all([censusSearch(q), nominatimSearch(q, 5)]);
+  const [google, census, nomin] = await Promise.all([
+    googlePlacesSearch(q, 6),
+    censusSearch(q),
+    nominatimSearch(q, 5),
+  ]);
   const seen = new Set<string>();
   const out: GeoResult[] = [];
-  for (const r of [...census, ...nomin]) {
+  for (const r of [...google, ...census, ...nomin]) {
     const key = r.display.toLowerCase().replace(/\s+/g, " ").trim();
     if (!key || seen.has(key)) continue;
     seen.add(key);
