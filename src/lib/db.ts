@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import path from "node:path";
 import fs from "node:fs";
+import { cityStateFromText, looksLikeStreet } from "./address";
 
 const DB_DIR = process.env.ZFAMILY_DATA_DIR || process.env.SMARTCAL_DATA_DIR || path.join(process.cwd(), ".data");
 const DB_PATH = path.join(DB_DIR, "zfamily.db");
@@ -219,7 +220,26 @@ function migrate(conn: Database.Database) {
   migrateProposals(conn);
   // Index after the proposals table is in its final (slot_type) shape.
   conn.exec("CREATE INDEX IF NOT EXISTS meal_proposals_slot ON meal_proposals(slot_type)");
+  migrateWeatherLabel(conn);
   seedStarterContent(conn);
+}
+
+// Older setHomeAddressAction stored the raw street ("4201 Shelby Rd") as the
+// weather label. If the label still looks like a street, re-derive "City, ST"
+// from the stored home address so the header shows a clean location. No network.
+function migrateWeatherLabel(conn: Database.Database) {
+  const get = (k: string) =>
+    (conn.prepare("SELECT value FROM settings WHERE key = ?").get(k) as { value?: string } | undefined)?.value;
+  const home = get("home_address");
+  const label = get("weather_label") ?? "";
+  if (!home || !looksLikeStreet(label)) return;
+  const derived = cityStateFromText(home);
+  if (!derived) return;
+  conn
+    .prepare(
+      "INSERT INTO settings (key, value) VALUES ('weather_label', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .run(derived);
 }
 
 // Meal proposals moved from week-bound dinner candidates to a future idea pool

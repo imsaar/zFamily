@@ -10,7 +10,8 @@ import { checkForUpdate, runUpdate, restartApp } from "@/lib/updater";
 import { createFeed, updateFeed, deleteFeed, syncDueFeeds } from "@/lib/ical";
 import { createReward, updateReward, deleteReward, redeem } from "@/lib/rewards";
 import { setSetting, getSetting } from "@/lib/settings";
-import { computeCommute, geocodeAddress, searchAddresses, type CommuteMode } from "@/lib/commute";
+import { computeCommute, geocodeAddress, searchAddresses, cityStateLabel, type CommuteMode } from "@/lib/commute";
+import { cityStateFromText, looksLikeStreet } from "@/lib/address";
 import { requirePin, setMemberPin, clearMemberPin, memberHasPin, verifyMemberPin } from "@/lib/pins";
 import { searchCity } from "@/lib/geocode";
 import { resetWeatherCache } from "@/lib/weather";
@@ -97,8 +98,10 @@ export async function createEventAction(input: {
   notes?: string;
   recurrence?: "none" | "daily" | "weekdays" | "weekly" | "monthly" | null;
   interval?: number;
+  commute_mode?: CommuteMode;
 }) {
-  const mode: CommuteMode = getSetting("commute_mode") === "bus" ? "bus" : "car";
+  // Per-event transport mode (defaults to car); falls back to the saved default.
+  const mode: CommuteMode = input.commute_mode ?? (getSetting("commute_mode") === "bus" ? "bus" : "car");
   const geoTarget = input.address?.trim() || input.location?.trim() || "";
   const commute_seconds = geoTarget ? await computeCommute(geoTarget, mode) : null;
   createLocalEvent({ ...input, commute_seconds, commute_mode: geoTarget ? mode : null });
@@ -109,7 +112,7 @@ export async function createEventAction(input: {
 // virtual id ("<baseId>::<ts>"); operate on the underlying base event.
 export async function updateEventAction(
   id: string,
-  patch: { title?: string; start_ts?: number; end_ts?: number; member_ids?: number[]; location?: string | null; address?: string | null; notes?: string | null },
+  patch: { title?: string; start_ts?: number; end_ts?: number; member_ids?: number[]; location?: string | null; address?: string | null; notes?: string | null; commute_mode?: CommuteMode },
   admin?: AdminAuth
 ) {
   const gate = await requireParentAuth(admin);
@@ -119,11 +122,12 @@ export async function updateEventAction(
   if (!existing) return { ok: false as const, reason: "not_found" as const };
   const location = patch.location !== undefined ? patch.location : existing.location;
   const address = patch.address !== undefined ? patch.address : existing.address;
-  // Recompute the commute when the location or address changed.
-  const mode: CommuteMode = getSetting("commute_mode") === "bus" ? "bus" : "car";
+  // Recompute the commute when the location, address, OR transport mode changed.
+  const mode: CommuteMode = patch.commute_mode ?? (existing.commute_mode === "bus" ? "bus" : "car");
+  const modeChanged = patch.commute_mode !== undefined && patch.commute_mode !== (existing.commute_mode ?? "car");
   let commute_seconds = existing.commute_seconds ?? null;
   let commute_mode = existing.commute_mode ?? null;
-  if (patch.location !== undefined || patch.address !== undefined) {
+  if (patch.location !== undefined || patch.address !== undefined || modeChanged) {
     const geoTarget = address?.trim() || location?.trim() || "";
     if (geoTarget) {
       commute_seconds = await computeCommute(geoTarget, mode);
@@ -597,11 +601,15 @@ export async function setHomeAddressAction(address: string, admin?: AdminAuth) {
   setSetting("home_address", a);
   setSetting("home_lat", String(geo.lat));
   setSetting("home_lon", String(geo.lon));
-  // Use the home location for weather too (label from the first address part;
-  // timezone falls back to "auto" in the weather fetch if unset).
+  // Use the home location for weather too — label as "City, ST" (not the street
+  // address). Timezone falls back to "auto" in the weather fetch if unset.
   setSetting("weather_lat", String(geo.lat));
   setSetting("weather_lon", String(geo.lon));
-  setSetting("weather_label", a.split(",")[0].trim() || a);
+  // Prefer the geocoder's structured city/state; if it didn't return one, parse
+  // the city/state out of what the user typed so we never fall back to a street.
+  let label = cityStateLabel(geo);
+  if (looksLikeStreet(label)) label = cityStateFromText(a) ?? label;
+  setSetting("weather_label", label);
   resetWeatherCache();
   bust();
   return { ok: true as const, resolved: geo.display };
