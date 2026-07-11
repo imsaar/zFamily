@@ -98,8 +98,10 @@ export async function createEventAction(input: {
   notes?: string;
   recurrence?: "none" | "daily" | "weekdays" | "weekly" | "monthly" | null;
   interval?: number;
+  commute_mode?: CommuteMode;
 }) {
-  const mode: CommuteMode = getSetting("commute_mode") === "bus" ? "bus" : "car";
+  // Per-event transport mode (defaults to car); falls back to the saved default.
+  const mode: CommuteMode = input.commute_mode ?? (getSetting("commute_mode") === "bus" ? "bus" : "car");
   const geoTarget = input.address?.trim() || input.location?.trim() || "";
   const commute_seconds = geoTarget ? await computeCommute(geoTarget, mode) : null;
   createLocalEvent({ ...input, commute_seconds, commute_mode: geoTarget ? mode : null });
@@ -110,7 +112,7 @@ export async function createEventAction(input: {
 // virtual id ("<baseId>::<ts>"); operate on the underlying base event.
 export async function updateEventAction(
   id: string,
-  patch: { title?: string; start_ts?: number; end_ts?: number; member_ids?: number[]; location?: string | null; address?: string | null; notes?: string | null },
+  patch: { title?: string; start_ts?: number; end_ts?: number; member_ids?: number[]; location?: string | null; address?: string | null; notes?: string | null; commute_mode?: CommuteMode },
   admin?: AdminAuth
 ) {
   const gate = await requireParentAuth(admin);
@@ -120,11 +122,12 @@ export async function updateEventAction(
   if (!existing) return { ok: false as const, reason: "not_found" as const };
   const location = patch.location !== undefined ? patch.location : existing.location;
   const address = patch.address !== undefined ? patch.address : existing.address;
-  // Recompute the commute when the location or address changed.
-  const mode: CommuteMode = getSetting("commute_mode") === "bus" ? "bus" : "car";
+  // Recompute the commute when the location, address, OR transport mode changed.
+  const mode: CommuteMode = patch.commute_mode ?? (existing.commute_mode === "bus" ? "bus" : "car");
+  const modeChanged = patch.commute_mode !== undefined && patch.commute_mode !== (existing.commute_mode ?? "car");
   let commute_seconds = existing.commute_seconds ?? null;
   let commute_mode = existing.commute_mode ?? null;
-  if (patch.location !== undefined || patch.address !== undefined) {
+  if (patch.location !== undefined || patch.address !== undefined || modeChanged) {
     const geoTarget = address?.trim() || location?.trim() || "";
     if (geoTarget) {
       commute_seconds = await computeCommute(geoTarget, mode);

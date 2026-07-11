@@ -7,6 +7,7 @@ import { Sheet } from "./Sheet";
 import { deleteEventAction, updateEventAction } from "@/app/actions";
 import { useAdminAuth } from "./AdminGate";
 import { AddressField } from "./AddressField";
+import { TransportModePicker, type TransportMode } from "./TransportMode";
 import type { Member, MemberColor, EventRow } from "@/lib/types";
 import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
@@ -30,6 +31,7 @@ export function EventDetailSheet({
   );
   const [location, setLocation] = useState(event.location ?? "");
   const [address, setAddress] = useState(event.address ?? "");
+  const [transport, setTransport] = useState<TransportMode>(event.commute_mode === "bus" ? "bus" : "car");
   const [notes, setNotes] = useState(event.notes ?? "");
 
   const isLocal = event.source === "local";
@@ -38,7 +40,7 @@ export function EventDetailSheet({
     setPending(true);
     try {
       const ok = await authenticate((auth) =>
-        updateEventAction(event.id, { title, member_ids: Array.from(memberIds), location: location || null, address: address || null, notes: notes || null }, auth)
+        updateEventAction(event.id, { title, member_ids: Array.from(memberIds), location: location || null, address: address || null, notes: notes || null, commute_mode: transport }, auth)
       );
       if (ok) {
         // Close the sheet — reopening it would show the stale `event` prop.
@@ -103,6 +105,9 @@ export function EventDetailSheet({
               </div>
             </div>
             <AddressField name={location} address={address} onNameChange={setLocation} onAddressChange={setAddress} />
+            {(location.trim() || address.trim()) && (
+              <TransportModePicker value={transport} onChange={setTransport} />
+            )}
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}

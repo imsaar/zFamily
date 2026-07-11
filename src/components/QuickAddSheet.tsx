@@ -6,6 +6,7 @@ import { format, addHours, setHours, setMinutes } from "date-fns";
 import { Sheet } from "./Sheet";
 import { createEventAction } from "@/app/actions";
 import { AddressField } from "./AddressField";
+import { TransportModePicker, type TransportMode } from "./TransportMode";
 import type { Member, MemberColor } from "@/lib/types";
 import { COLOR_CLASSES, memberGlyph } from "@/lib/types";
 
@@ -31,6 +32,7 @@ export function QuickAddSheet({
   const [memberIds, setMemberIds] = useState<Set<number>>(new Set());
   const [location, setLocation] = useState("");
   const [address, setAddress] = useState("");
+  const [transport, setTransport] = useState<TransportMode>("car");
   const [dateStr, setDateStr] = useState(format(day, "yyyy-MM-dd"));
   const [timeStr, setTimeStr] = useState(format(setMinutes(setHours(day, hour), 0), "HH:mm"));
   const [duration, setDuration] = useState(60); // minutes (source of truth)
@@ -53,6 +55,7 @@ export function QuickAddSheet({
         end_ts: Math.floor(endDate.getTime() / 1000),
         location: location.trim() || undefined,
         address: address.trim() || null,
+        commute_mode: transport,
         recurrence,
         interval,
       });
@@ -108,6 +111,9 @@ export function QuickAddSheet({
           <label className="text-sm font-medium text-zinc-500">Location</label>
           <div className="mt-1">
             <AddressField name={location} address={address} onNameChange={setLocation} onAddressChange={setAddress} />
+            {(location.trim() || address.trim()) && (
+              <TransportModePicker value={transport} onChange={setTransport} />
+            )}
           </div>
         </div>
 

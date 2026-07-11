@@ -1,4 +1,5 @@
 import { getSetting } from "./settings";
+import { cityStateFromText } from "./address";
 
 /**
  * Commute estimates using free OpenStreetMap services: Nominatim to geocode an
@@ -24,7 +25,66 @@ async function fetchJson(url: string, headers: Record<string, string> = {}, ms =
   }
 }
 
-export type GeoResult = { lat: number; lon: number; display: string; city?: string; state?: string };
+export type GeoResult = { lat: number; lon: number; display: string; city?: string; state?: string; countryCode?: string };
+
+// Common country names/aliases → ISO code. Used two ways: to tag a Google
+// result's country from its formatted address, and to tell whether a typed
+// query intentionally names a country outside the home country (so we don't
+// filter that place away).
+const COUNTRY_ALIASES: Record<string, string> = {
+  "united states": "US", usa: "US", "u.s.a": "US", "u.s": "US", "u.s.a.": "US", america: "US",
+  canada: "CA", mexico: "MX",
+  "united kingdom": "GB", uk: "GB", "u.k": "GB", england: "GB", scotland: "GB", wales: "GB",
+  britain: "GB", "great britain": "GB", ireland: "IE",
+  france: "FR", germany: "DE", spain: "ES", italy: "IT", portugal: "PT", netherlands: "NL",
+  belgium: "BE", switzerland: "CH", austria: "AT", sweden: "SE", norway: "NO", denmark: "DK",
+  finland: "FI", poland: "PL", greece: "GR", turkey: "TR", russia: "RU", ukraine: "UA",
+  india: "IN", pakistan: "PK", bangladesh: "BD", "sri lanka": "LK", nepal: "NP", china: "CN",
+  japan: "JP", "south korea": "KR", korea: "KR", taiwan: "TW", "hong kong": "HK", singapore: "SG",
+  malaysia: "MY", indonesia: "ID", thailand: "TH", vietnam: "VN", philippines: "PH",
+  australia: "AU", "new zealand": "NZ",
+  "saudi arabia": "SA", "united arab emirates": "AE", uae: "AE", qatar: "QA", kuwait: "KW",
+  bahrain: "BH", oman: "OM", iran: "IR", iraq: "IQ", israel: "IL", jordan: "JO", lebanon: "LB",
+  egypt: "EG", morocco: "MA",
+  "south africa": "ZA", nigeria: "NG", kenya: "KE", ghana: "GH", ethiopia: "ET",
+  brazil: "BR", argentina: "AR", chile: "CL", colombia: "CO", peru: "PE",
+};
+
+// The home country as an ISO code, derived from the saved home address text.
+// Only US is detected with confidence (a trailing "USA" or a US state); any
+// other/unknown home returns null, which disables the country filter.
+function homeCountryCode(): string | null {
+  const addr = getSetting("home_address")?.trim();
+  if (!addr) return null;
+  if (/\b(usa|u\.?s\.?a?\.?|united states)\b/i.test(addr)) return "US";
+  if (cityStateFromText(addr)) return "US"; // resolves a US state → US
+  return null;
+}
+
+// Whether a typed query names a country other than `homeCC` (so results in that
+// country should not be filtered out).
+function mentionsOtherCountry(query: string, homeCC: string): boolean {
+  const q = ` ${query.toLowerCase()} `;
+  for (const [alias, cc] of Object.entries(COUNTRY_ALIASES)) {
+    if (cc === homeCC) continue;
+    // Word-boundary match so "us" in "museum" or "in" in "Lynnwood" don't hit.
+    const re = new RegExp(`(?:^|[^a-z])${alias.replace(/[.]/g, "\\.")}(?:[^a-z]|$)`, "i");
+    if (re.test(q)) return true;
+  }
+  return false;
+}
+
+// Great-circle distance in km between two lat/lon points (for ranking search
+// results by how close they are to home).
+function distanceKm(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLon = ((b.lon - a.lon) * Math.PI) / 180;
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(s)));
+}
 
 const US_STATE_ABBR: Record<string, string> = {
   alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO",
@@ -70,16 +130,25 @@ async function censusSearch(query: string): Promise<GeoResult[]> {
       display: String(m.matchedAddress ?? ""),
       city: m.addressComponents?.city,
       state: m.addressComponents?.state,
+      countryCode: "US", // Census is US-only
     }))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon) && r.display);
 }
 
 // Nominatim (OpenStreetMap) — good for place/business names, POIs, and non-US.
-async function nominatimSearch(query: string, limit: number): Promise<GeoResult[]> {
-  const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=${limit}&q=${encodeURIComponent(query)}`;
+// When `home` is set, a viewbox around it biases (but doesn't restrict) results
+// toward the household's area so the closest matches rank first.
+async function nominatimSearch(query: string, limit: number, home?: { lat: number; lon: number } | null): Promise<GeoResult[]> {
+  let url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=${limit}&q=${encodeURIComponent(query)}`;
+  if (home) {
+    // ~1.5° box (~165 km) around home; bounded=0 keeps it a preference, not a filter.
+    const d = 1.5;
+    const vb = `${home.lon - d},${home.lat + d},${home.lon + d},${home.lat - d}`;
+    url += `&viewbox=${encodeURIComponent(vb)}&bounded=0`;
+  }
   const data = (await fetchJson(url, { "User-Agent": UA, "Accept-Language": "en" })) as Array<{
     lat: string; lon: string; display_name: string;
-    address?: { city?: string; town?: string; village?: string; hamlet?: string; municipality?: string; state?: string };
+    address?: { city?: string; town?: string; village?: string; hamlet?: string; municipality?: string; state?: string; country_code?: string };
   }> | null;
   if (!Array.isArray(data)) return [];
   return data
@@ -89,8 +158,45 @@ async function nominatimSearch(query: string, limit: number): Promise<GeoResult[
       display: d.display_name,
       city: d.address?.city ?? d.address?.town ?? d.address?.village ?? d.address?.hamlet ?? d.address?.municipality,
       state: d.address?.state,
+      countryCode: d.address?.country_code ? d.address.country_code.toUpperCase() : undefined,
     }))
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon));
+}
+
+// Photon (Komoot, OpenStreetMap-based) — keyless and much better than Nominatim
+// at fuzzy business/POI/place-name search. `lat`/`lon` bias ranks matches near
+// home first, so a common church/business name resolves locally instead of to a
+// same-named place in another state or country.
+async function photonSearch(query: string, limit: number, home?: { lat: number; lon: number } | null): Promise<GeoResult[]> {
+  let url = `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=${limit}&lang=en`;
+  if (home) url += `&lat=${home.lat}&lon=${home.lon}`;
+  const data = (await fetchJson(url, { "User-Agent": UA })) as {
+    features?: Array<{
+      geometry?: { coordinates?: [number, number] };
+      properties?: {
+        name?: string; housenumber?: string; street?: string; city?: string;
+        town?: string; village?: string; district?: string; state?: string;
+        postcode?: string; country?: string; countrycode?: string;
+      };
+    }>;
+  } | null;
+  const features = data?.features;
+  if (!Array.isArray(features)) return [];
+  return features
+    .map((f) => {
+      const [lon, lat] = f.geometry?.coordinates ?? [NaN, NaN];
+      const p = f.properties ?? {};
+      const city = p.city ?? p.town ?? p.village ?? p.district;
+      const line = [p.housenumber, p.street].filter(Boolean).join(" ");
+      const display = [p.name, line, city, p.state, p.postcode]
+        .filter((s) => s && String(s).trim())
+        .join(", ");
+      return {
+        lat: Number(lat), lon: Number(lon), display, city, state: p.state,
+        countryCode: p.countrycode ? p.countrycode.toUpperCase() : undefined,
+      };
+    })
+    .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon) && r.display);
 }
 
 function googleKey(): string {
@@ -109,10 +215,13 @@ function parseUsCityState(addr: string): { city?: string; state?: string } {
 }
 
 // Google Places Text Search — finds businesses/POIs by name (needs an API key).
-async function googlePlacesSearch(query: string, limit: number): Promise<GeoResult[]> {
+// A `location`+`radius` around home biases (doesn't restrict) results toward the
+// household's area so a same-named place near home outranks a distant one.
+async function googlePlacesSearch(query: string, limit: number, home?: { lat: number; lon: number } | null): Promise<GeoResult[]> {
   const key = googleKey();
   if (!key) return [];
-  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${key}`;
+  let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${key}`;
+  if (home) url += `&location=${home.lat},${home.lon}&radius=50000`;
   const data = (await fetchJson(url)) as { results?: Array<{ name?: string; formatted_address?: string; geometry?: { location?: { lat?: number; lng?: number } } }> } | null;
   const results = data?.results;
   if (!Array.isArray(results)) return [];
@@ -123,7 +232,10 @@ async function googlePlacesSearch(query: string, limit: number): Promise<GeoResu
       const addr = r.formatted_address ?? "";
       const { city, state } = parseUsCityState(addr);
       const display = r.name && addr ? `${r.name}, ${addr}` : (addr || r.name || "");
-      return { lat: Number(loc?.lat), lon: Number(loc?.lng), display, city, state };
+      // Country from the last comma-part of the formatted address (e.g. "USA").
+      const lastPart = addr.split(",").map((s) => s.trim()).filter(Boolean).pop() ?? "";
+      const countryCode = COUNTRY_ALIASES[lastPart.toLowerCase().replace(/\.$/, "")] ?? undefined;
+      return { lat: Number(loc?.lat), lon: Number(loc?.lng), display, city, state, countryCode };
     })
     .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lon) && r.display);
 }
@@ -133,11 +245,14 @@ async function googlePlacesSearch(query: string, limit: number): Promise<GeoResu
 export async function geocodeAddress(address: string): Promise<GeoResult | null> {
   const q = address.trim();
   if (!q) return null;
-  const google = await googlePlacesSearch(q, 1);
+  const home = homeCoords();
+  const google = await googlePlacesSearch(q, 1, home);
   if (google[0]) return google[0];
   const census = await censusSearch(q);
   if (census[0]) return census[0];
-  const nomin = await nominatimSearch(q, 1);
+  const photon = await photonSearch(q, 1, home);
+  if (photon[0]) return photon[0];
+  const nomin = await nominatimSearch(q, 1, home);
   return nomin[0] ?? null;
 }
 
@@ -146,21 +261,33 @@ export async function geocodeAddress(address: string): Promise<GeoResult | null>
 export async function searchAddresses(query: string): Promise<GeoResult[]> {
   const q = query.trim();
   if (q.length < 3) return [];
-  const [google, census, nomin] = await Promise.all([
-    googlePlacesSearch(q, 6),
+  const home = homeCoords();
+  const [google, census, photon, nomin] = await Promise.all([
+    googlePlacesSearch(q, 6, home),
     censusSearch(q),
-    nominatimSearch(q, 5),
+    photonSearch(q, 6, home),
+    nominatimSearch(q, 5, home),
   ]);
   const seen = new Set<string>();
-  const out: GeoResult[] = [];
-  for (const r of [...google, ...census, ...nomin]) {
+  let out: GeoResult[] = [];
+  for (const r of [...google, ...census, ...photon, ...nomin]) {
     const key = r.display.toLowerCase().replace(/\s+/g, " ").trim();
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push(r);
-    if (out.length >= 6) break;
   }
-  return out;
+  // If home is in a known country (US), hide suggestions from other countries
+  // unless the query itself names one — a US household typing "Lynnwood" doesn't
+  // want a same-named town abroad. Results with an unknown country are kept.
+  const homeCC = homeCountryCode();
+  if (homeCC && !mentionsOtherCountry(q, homeCC)) {
+    const domestic = out.filter((r) => !r.countryCode || r.countryCode === homeCC);
+    if (domestic.length) out = domestic;
+  }
+  // When home is known, rank the whole (deduped) pool by proximity so nearby
+  // matches beat far-away ones with the same name — then cap.
+  if (home) out.sort((a, b) => distanceKm(a, home) - distanceKm(b, home));
+  return out.slice(0, 6);
 }
 
 /** The commute origin: the geocoded home address, else the weather location. */
