@@ -16,7 +16,10 @@ import { memberPinFlags } from "@/lib/pins";
 import { listParents } from "@/lib/members";
 
 export const viewport: Viewport = {
-  width: 1920,
+  // device-width so phones render at their true width (responsive), while the
+  // 1920×1080 wall panel still reports 1920 — the large-screen layout is
+  // unchanged. Large styles are gated behind `lg:` so the kiosk never regresses.
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
@@ -46,7 +49,7 @@ export default async function KioskLayout({ children }: { children: React.ReactN
   return (
     <PinProviders hasPinByMember={pinFlags} parents={parents}>
       <Header members={members} weather={weather} />
-      <main className="flex-1 overflow-hidden">{children}</main>
+      <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
       <BottomNav />
       <IcalAutoSync />
       {settings.onscreen_keyboard === "true" && <OnScreenKeyboard />}

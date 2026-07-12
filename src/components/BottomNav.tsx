@@ -15,7 +15,7 @@ const TABS = [
 export function BottomNav() {
   const path = usePathname();
   return (
-    <nav className="h-20 border-t border-zinc-200 bg-white flex items-stretch justify-around shrink-0">
+    <nav className="h-16 lg:h-20 pb-[env(safe-area-inset-bottom)] border-t border-zinc-200 bg-white flex items-stretch justify-around shrink-0">
       {TABS.map((tab) => {
         const active = tab.href === "/"
           ? path === "/" || path.startsWith("/me")
@@ -24,11 +24,11 @@ export function BottomNav() {
           <Link
             key={tab.href}
             href={tab.href}
-            className={`flex-1 flex flex-col items-center justify-center gap-1 text-base transition-colors ${
+            className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 lg:gap-1 text-xs lg:text-base transition-colors ${
               active ? "text-zinc-900 font-semibold" : "text-zinc-400"
             }`}
           >
-            <div className="text-2xl leading-none">{tab.icon}</div>
+            <div className="text-xl lg:text-2xl leading-none">{tab.icon}</div>
             <div>{tab.label}</div>
             {active && <div className="absolute bottom-0 h-1 w-12 bg-zinc-900 rounded-t-full" />}
           </Link>

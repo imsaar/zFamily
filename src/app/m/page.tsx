@@ -37,6 +37,13 @@ export default function MobileHome() {
           <div className="text-sm text-zinc-500">zFamily</div>
           <div className="text-2xl font-semibold">{format(today, "EEE, MMM d")}</div>
         </div>
+        <Link
+          href="/settings"
+          aria-label="Settings & family admin"
+          className="w-11 h-11 rounded-full bg-white border border-zinc-200 flex items-center justify-center text-2xl active:bg-zinc-100"
+        >
+          ⚙️
+        </Link>
       </header>
 
       <section>

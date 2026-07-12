@@ -46,7 +46,7 @@ export function MobileEventForm({ members }: { members: Member[] }) {
   };
 
   return (
-    <div className="p-5 space-y-5">
+    <div className="px-5 pt-5 pb-[calc(env(safe-area-inset-bottom)+2rem)] space-y-5">
       <div>
         <label className="text-sm font-medium text-zinc-500">Title</label>
         <input
