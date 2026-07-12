@@ -158,7 +158,12 @@ export function FamilyHome({
         </section>
 
         <section className="mx-6 mt-6 mb-6">
-          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-3">Today's schedule</div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Today's schedule</div>
+            <Link href="/event" className="px-3 py-1.5 rounded-full bg-zinc-900 text-white text-sm font-medium active:bg-zinc-800">
+              ＋ Add event
+            </Link>
+          </div>
           {todayEvents.length === 0 ? (
             <div className="bg-white rounded-2xl border border-zinc-200 p-8 text-center text-zinc-400 italic">
               Nothing scheduled today. Enjoy the day! 🌿

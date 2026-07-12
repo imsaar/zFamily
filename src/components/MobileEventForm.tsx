@@ -41,7 +41,7 @@ export function MobileEventForm({ members }: { members: Member[] }) {
         recurrence,
         interval,
       });
-      router.push("/m");
+      router.push("/");
     });
   };
 

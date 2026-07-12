@@ -42,8 +42,10 @@ function bust() {
   revalidatePath("/month");
   revalidatePath("/chores");
   revalidatePath("/meals");
+  revalidatePath("/shopping");
+  revalidatePath("/vote");
+  revalidatePath("/event");
   revalidatePath("/settings");
-  revalidatePath("/m", "layout");
 }
 
 // Guard used by any admin action. `admin.by` must be a parent; if that parent
