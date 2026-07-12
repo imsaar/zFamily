@@ -31,7 +31,7 @@ export function TodaySidebar({
   const memberById = new Map(members.map((m) => [m.id, m]));
 
   return (
-    <aside className="w-[420px] border-l border-zinc-200 bg-white flex flex-col overflow-hidden shrink-0">
+    <aside className="w-[420px] border-l border-zinc-200 bg-white hidden lg:flex flex-col overflow-hidden shrink-0">
       <div className="px-6 py-4 border-b border-zinc-200">
         <div className="text-sm uppercase tracking-wider text-zinc-400">Today</div>
         <div className="text-2xl font-semibold">{format(new Date(), "EEEE, MMM d")}</div>

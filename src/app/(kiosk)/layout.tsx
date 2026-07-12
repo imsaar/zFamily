@@ -52,20 +52,28 @@ export default async function KioskLayout({ children }: { children: React.ReactN
       <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
       <BottomNav />
       <IcalAutoSync />
-      {settings.onscreen_keyboard === "true" && <OnScreenKeyboard />}
+      {/* On-screen keyboard and screensaver are wall-display affordances; hide
+          them on phones (they'd fire on a mobile visitor to a kiosk route). */}
+      {settings.onscreen_keyboard === "true" && (
+        <div className="hidden lg:contents">
+          <OnScreenKeyboard />
+        </div>
+      )}
       <KioskMenu />
       {parents.length > 0 && parentsNeedingPin.length > 0 && (
         <PinSetupGate parentsNeedingPin={parentsNeedingPin} />
       )}
-      <Screensaver
-        weather={weather}
-        upcomingEvents={upcomingEvents}
-        members={members}
-        quietStart={settings.quiet_start ?? "21:00"}
-        quietEnd={settings.quiet_end ?? "07:00"}
-        idleSeconds={Number(settings.idle_seconds ?? 300)}
-        mode={settings.screensaver_mode ?? "clock"}
-      />
+      <div className="hidden lg:contents">
+        <Screensaver
+          weather={weather}
+          upcomingEvents={upcomingEvents}
+          members={members}
+          quietStart={settings.quiet_start ?? "21:00"}
+          quietEnd={settings.quiet_end ?? "07:00"}
+          idleSeconds={Number(settings.idle_seconds ?? 300)}
+          mode={settings.screensaver_mode ?? "clock"}
+        />
+      </div>
     </PinProviders>
   );
 }

@@ -44,8 +44,8 @@ export function MonthView({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-200 bg-white">
-        <div className="text-2xl font-semibold">{monthLabel}</div>
+      <div className="flex items-center justify-between px-4 lg:px-6 py-3 border-b border-zinc-200 bg-white shrink-0">
+        <div className="text-xl lg:text-2xl font-semibold">{monthLabel}</div>
         <div className="flex items-center gap-2">
           <Link href={`/month?d=${prev}`} className="w-12 h-12 rounded-full border border-zinc-200 flex items-center justify-center text-xl active:bg-zinc-100">‹</Link>
           <Link href={`/month?d=${today}`} className="px-5 h-12 rounded-full border border-zinc-200 flex items-center text-base active:bg-zinc-100">Today</Link>
