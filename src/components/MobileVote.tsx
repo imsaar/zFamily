@@ -32,8 +32,8 @@ export function MobileVote({
   const personal = proposals.filter((p) => p.member_id != null);
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex-1 p-4 space-y-3 overflow-y-auto pb-28">
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 p-4 space-y-3 overflow-y-auto">
         <p className="text-sm text-zinc-500">
           Future meal ideas — lunch &amp; dinner are shared, so vote below. Breakfast is each person&apos;s own pick. A
           parent places the winners onto the plan.
@@ -67,7 +67,7 @@ export function MobileVote({
         )}
       </div>
 
-      <div className="p-4 border-t border-zinc-200 bg-white fixed bottom-0 left-0 right-0">
+      <div className="p-4 border-t border-zinc-200 bg-white shrink-0">
         <button
           onClick={() => setAdding(true)}
           className="w-full py-3 rounded-xl border-2 border-dashed border-zinc-300 text-zinc-700 font-medium"
