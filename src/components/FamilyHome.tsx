@@ -79,9 +79,9 @@ export function FamilyHome({
 
   return (
     <>
-    <div className="h-full flex bg-zinc-50">
+    <div className="h-full flex flex-col lg:flex-row bg-zinc-50 overflow-y-auto lg:overflow-hidden">
       {/* Left column: verse of the day + week overview */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+      <div className="flex flex-col min-w-0 lg:flex-1 lg:overflow-y-auto">
         <section className="mx-6 mt-6 flex items-center justify-between px-2">
           <div className="text-sm text-zinc-500">Today is</div>
           <div className="text-sm font-medium text-emerald-800 tabular-nums">🌙 {hijriDate}</div>
@@ -158,7 +158,12 @@ export function FamilyHome({
         </section>
 
         <section className="mx-6 mt-6 mb-6">
-          <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold mb-3">Today's schedule</div>
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Today's schedule</div>
+            <Link href="/event" className="px-3 py-1.5 rounded-full bg-zinc-900 text-white text-sm font-medium active:bg-zinc-800">
+              ＋ Add event
+            </Link>
+          </div>
           {todayEvents.length === 0 ? (
             <div className="bg-white rounded-2xl border border-zinc-200 p-8 text-center text-zinc-400 italic">
               Nothing scheduled today. Enjoy the day! 🌿
@@ -207,7 +212,7 @@ export function FamilyHome({
       </div>
 
       {/* Right column: personal tiles + quick tiles */}
-      <div className="w-[520px] shrink-0 border-l border-zinc-200 bg-white flex flex-col overflow-y-auto">
+      <div className="w-full lg:w-[520px] shrink-0 border-t lg:border-t-0 lg:border-l border-zinc-200 bg-white flex flex-col lg:overflow-y-auto">
         <div className="px-6 py-5 border-b border-zinc-200">
           <div className="text-xs uppercase tracking-wider text-zinc-500 font-semibold">Switch to my view</div>
           <div className="mt-3 grid grid-cols-2 gap-3">

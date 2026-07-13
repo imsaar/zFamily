@@ -86,11 +86,11 @@ export function MealsView({
   const today = format(new Date(), "yyyy-MM-dd");
 
   return (
-    <div className="h-full flex">
+    <div className="h-full flex flex-col lg:flex-row">
       {/* Weekly meal plan */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-200 bg-white">
-          <div className="text-2xl font-semibold">Meal plan · {monthLabel}</div>
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 lg:px-6 py-3 border-b border-zinc-200 bg-white shrink-0">
+          <div className="text-lg lg:text-2xl font-semibold">Meal plan · {monthLabel}</div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setVoting(true)}
@@ -115,8 +115,9 @@ export function MealsView({
           </div>
         </div>
 
-        {/* Day columns × 3 slots grid */}
-        <div className="flex-1 min-h-0 grid grid-cols-7 bg-white overflow-hidden">
+        {/* Day columns × 3 slots grid — scrolls horizontally on phones. */}
+        <div className="flex-1 min-h-0 overflow-x-auto">
+          <div className="h-full min-w-[720px] lg:min-w-0 grid grid-cols-7 bg-white">
           {days.map((d) => {
             const key = format(d, "yyyy-MM-dd");
             const isToday_ = isToday(d);
@@ -151,6 +152,7 @@ export function MealsView({
               </div>
             );
           })}
+        </div>
         </div>
       </div>
 
@@ -201,7 +203,7 @@ function ShoppingList({ items }: { items: ShoppingItem[] }) {
   };
 
   return (
-    <aside className="w-[400px] border-l border-zinc-200 bg-white flex flex-col overflow-hidden shrink-0">
+    <aside className="w-[400px] border-l border-zinc-200 bg-white hidden lg:flex flex-col overflow-hidden shrink-0">
       <div className="px-6 py-4 border-b border-zinc-200">
         <div className="text-sm uppercase tracking-wider text-zinc-400">Shopping list</div>
         <div className="text-2xl font-semibold">🛒 {active.length} to buy</div>

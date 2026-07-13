@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { type CSSProperties, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { format } from "date-fns";
 import type { Member, MemberColor, ChoreCompletion, Reward } from "@/lib/types";
@@ -62,9 +62,9 @@ export function ChoreBoard({
 
   return (
     <div className="h-full flex flex-col bg-zinc-50">
-      <div className="px-8 py-4 border-b border-zinc-200 bg-white flex items-center justify-between">
+      <div className="px-4 lg:px-8 py-4 border-b border-zinc-200 bg-white flex items-center justify-between gap-2">
         <div>
-          <div className="text-2xl font-semibold">Chores</div>
+          <div className="text-xl lg:text-2xl font-semibold">Chores</div>
           <div className="text-sm text-zinc-500">{format(today, "EEEE, MMMM d")}</div>
         </div>
         <div className="flex items-center gap-2">
@@ -90,7 +90,7 @@ export function ChoreBoard({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+      <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-6">
         {sharedChores.length > 0 && (
           <CommonChores
             chores={sharedChores}
@@ -100,8 +100,8 @@ export function ChoreBoard({
           />
         )}
         <div
-          className="grid gap-4"
-          style={{ gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}
+          className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:[grid-template-columns:repeat(var(--chore-cols),minmax(0,1fr))]"
+          style={{ "--chore-cols": gridCols } as CSSProperties}
         >
           {orderedMembers.map((m) => {
             const color = COLOR_CLASSES[m.color as MemberColor] ?? COLOR_CLASSES.sky;

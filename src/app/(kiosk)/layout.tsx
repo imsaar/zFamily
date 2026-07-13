@@ -16,7 +16,10 @@ import { memberPinFlags } from "@/lib/pins";
 import { listParents } from "@/lib/members";
 
 export const viewport: Viewport = {
-  width: 1920,
+  // device-width so phones render at their true width (responsive), while the
+  // 1920×1080 wall panel still reports 1920 — the large-screen layout is
+  // unchanged. Large styles are gated behind `lg:` so the kiosk never regresses.
+  width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
@@ -46,23 +49,31 @@ export default async function KioskLayout({ children }: { children: React.ReactN
   return (
     <PinProviders hasPinByMember={pinFlags} parents={parents}>
       <Header members={members} weather={weather} />
-      <main className="flex-1 overflow-hidden">{children}</main>
+      <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
       <BottomNav />
       <IcalAutoSync />
-      {settings.onscreen_keyboard === "true" && <OnScreenKeyboard />}
+      {/* On-screen keyboard and screensaver are wall-display affordances; hide
+          them on phones (they'd fire on a mobile visitor to a kiosk route). */}
+      {settings.onscreen_keyboard === "true" && (
+        <div className="hidden lg:contents">
+          <OnScreenKeyboard />
+        </div>
+      )}
       <KioskMenu />
       {parents.length > 0 && parentsNeedingPin.length > 0 && (
         <PinSetupGate parentsNeedingPin={parentsNeedingPin} />
       )}
-      <Screensaver
-        weather={weather}
-        upcomingEvents={upcomingEvents}
-        members={members}
-        quietStart={settings.quiet_start ?? "21:00"}
-        quietEnd={settings.quiet_end ?? "07:00"}
-        idleSeconds={Number(settings.idle_seconds ?? 300)}
-        mode={settings.screensaver_mode ?? "clock"}
-      />
+      <div className="hidden lg:contents">
+        <Screensaver
+          weather={weather}
+          upcomingEvents={upcomingEvents}
+          members={members}
+          quietStart={settings.quiet_start ?? "21:00"}
+          quietEnd={settings.quiet_end ?? "07:00"}
+          idleSeconds={Number(settings.idle_seconds ?? 300)}
+          mode={settings.screensaver_mode ?? "clock"}
+        />
+      </div>
     </PinProviders>
   );
 }

@@ -56,8 +56,8 @@ export function WeekView({
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex items-center justify-between px-6 py-3 border-b border-zinc-200 bg-white">
-        <div className="text-2xl font-semibold">{monthLabel}</div>
+      <div className="flex items-center justify-between px-4 lg:px-6 py-3 border-b border-zinc-200 bg-white shrink-0">
+        <div className="text-xl lg:text-2xl font-semibold">{monthLabel}</div>
         <div className="flex items-center gap-2">
           <Link
             href={`/week?d=${prevWeek}`}
@@ -79,6 +79,12 @@ export function WeekView({
           </Link>
         </div>
       </div>
+
+      {/* On phones the 7-day grid scrolls horizontally (min-w); on the kiosk
+          it fills the width (lg:min-w-0). Headers, all-day, and the hourly grid
+          share one scroll container so their columns stay aligned. */}
+      <div className="flex-1 min-h-0 overflow-x-auto">
+        <div className="h-full min-w-[720px] lg:min-w-0 flex flex-col">
 
       {/* Day headers */}
       <div className="grid grid-cols-[64px_repeat(7,1fr)] border-b border-zinc-200 bg-white">
@@ -126,7 +132,7 @@ export function WeekView({
       </div>
 
       {/* Hourly grid */}
-      <div className="flex-1 overflow-auto no-scrollbar">
+      <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar">
         <div
           className="grid grid-cols-[64px_repeat(7,1fr)] relative"
           style={{ height: (DAY_END - DAY_START) * HOUR_HEIGHT }}
@@ -205,6 +211,8 @@ export function WeekView({
               </div>
             );
           })}
+        </div>
+      </div>
         </div>
       </div>
 
