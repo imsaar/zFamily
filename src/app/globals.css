@@ -25,6 +25,16 @@ html, body {
   touch-action: manipulation;
 }
 
+/* App-shell height. `svh` = the *visible* viewport (toolbar-visible state), so
+   the pinned bottom nav always fits and never lands behind a mobile browser
+   toolbar. `vh` is the fallback for browsers without `svh`. Do NOT use plain
+   `100vh`/`100dvh` here: both can resolve to the toolbar-hidden (larger) height
+   and push the nav below the fold of an `overflow-hidden` body. */
+body {
+  height: 100vh;
+  height: 100svh;
+}
+
 button, [role="button"] {
   -webkit-tap-highlight-color: transparent;
   user-select: none;

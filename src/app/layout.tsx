@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${geistSans.variable} h-full`}>
-      <body className="h-dvh flex flex-col overflow-hidden">
+      <body className="flex flex-col overflow-hidden">
         <ConfirmProvider>{children}</ConfirmProvider>
       </body>
     </html>
