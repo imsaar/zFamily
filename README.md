@@ -1,6 +1,6 @@
 # zFamily
 
-A wall-mounted family hub — calendar, chores, meals, shopping — designed to run on a 15.6" touch HDMI display attached to a Linux box, plus a mobile companion PWA that lives on family members' phones.
+A wall-mounted family hub — calendar, chores, meals, shopping — designed to run on a 15.6" touch HDMI display attached to a Linux box. The **same app is fully responsive**, so family members get a phone-friendly experience from the same URL (installable as a PWA) — there's no separate mobile build to maintain.
 
 Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 
@@ -17,7 +17,7 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 - [Configuration reference](#configuration-reference)
 - [Authentication (PINs)](#authentication-pins)
 - [Data & backup](#data--backup)
-- [Mobile companion (PWA)](#mobile-companion-pwa)
+- [Mobile / PWA](#mobile--pwa)
 - [Remote access (Tailscale)](#remote-access-tailscale)
 - [Screensaver & quiet hours](#screensaver--quiet-hours)
 - [Testing](#testing)
@@ -30,16 +30,16 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 
 - **Family home dashboard** with Quranic verse of the day (Arabic + English translation, deterministic per date), Hijri (Umm al-Qura) date with moon-sighting correction, weekly overview, today's breakfast/lunch/dinner panel, and quick tiles.
 - **Weekly + monthly calendar** with per-member color coding, all-day strip, hourly grid, red "now" line. Events support **multiple participants** (with All / Clear quick-select) and render as a **gradient of their colors** in one consolidated block. Editing/deleting an event is parent-PIN gated.
-- **Event location + commute** — give an event a location (type a name and **look up** the full address (US Census geocoder for US street addresses, OpenStreetMap for places/POIs)); the app then estimates the **commute time from home** (🚗 car via OSRM, or 🚌 bus as a distance-based estimate) and shows it in the event details and Today's schedule. Set your **home address** in Settings → Display (it's also used as the weather location).
+- **Event location + commute** — give an event a location (type a name and **look up** the full address). Lookup queries several free geocoders — US Census (US street addresses), Photon and Nominatim (OpenStreetMap places/POIs), and an optional Google Places key for businesses by name — and **ranks results by distance from your home address**, hiding out-of-country matches unless you name another country. Each event picks how you'll get there — **🚗 Car** (OSRM driving time) or **🚌 Bus** (distance-based estimate) — and the **commute time from home** shows in the event details and Today's schedule. Set your **home address** in Settings → Display (it's also used as the weather location).
 - **Recurring events** — locally-created events support daily, weekdays, weekly, monthly, or quarterly recurrence (client-expanded from RRULE).
 - **Chore board** with pending → verified two-step (parents verify children; parents peer-verify each other), big touch check-off circles, daily/weekly/weekend recurrence, points, streaks (🔥), weekly progress bars. A **chore library** of common household chores (empty the dishwasher, take garbage to curb every Sunday, clean the kitchen…) pre-fills the editor so you just assign who does it. **Common chores** can be marked doable-by-anyone — the first person to do it completes it for everyone that period, and you pick who did it.
 - **Gamification** — every verified chore earns points; parent-approved rewards shelf lets kids spend points on real rewards.
 - **Meal planner** — weekly breakfast/lunch/dinner grid, meal library with ingredients (quantity + unit), favorites (❤️). Each meal is marked eligible for breakfast/lunch/dinner so the slot picker only offers meals that fit, and you can filter the list by an ingredient you already have.
 - **Meal ideas (proposals)** — a future wishlist of dishes, not tied to a date. **Lunch & dinner are shared** and the family votes (medals for the favorites); **breakfast is each person's own pick**. Nothing auto-fills — proposed dishes show up in the day's slot picker for a parent to place.
-- **Shopping list** — when a meal is placed on the plan you choose which of its ingredients get added (starts unselected), shared with the mobile companion.
+- **Shopping list** — when a meal is placed on the plan you choose which of its ingredients get added (starts unselected); available on its own `/shopping` route on wall and phone.
 - **Emoji/icon picker** — a curated tap-to-choose icon grid everywhere an icon is set (members, chores, rewards, meals), with a "type your own" box for any emoji. A member's chosen icon (or a neutral person glyph) is their avatar until a headshot is uploaded.
 - **On-screen keyboard** (optional, Settings → Display) — a touch QWERTY that surfaces on a ⌨️ button when a text field is focused, for kiosks with no physical keyboard.
-- **Kiosk menu** — right-click / long-press anywhere on the wall display opens an app menu (refresh, connection check, sync, fullscreen, settings) instead of the browser's native context menu, which is suppressed. The mobile PWA keeps normal browser behavior.
+- **Kiosk menu** — right-click / long-press anywhere on the wall display opens an app menu (refresh, connection check, sync, fullscreen, settings) instead of the browser's native context menu, which is suppressed.
 - **In-app software update** (Settings → Advanced) — a parent can pull the latest code, rebuild on the device, and restart, all from the wall display. All in-app confirmations use styled dialogs (no native `alert`/`confirm`).
 - **Quran verse context** — tap the verse-of-the-day reference to open the ayah in an in-app tanzil.net reader (Ali Quli Qarai translation); long verses are clamped with a "read the full ayah" link. Stays inside the app — no external browser window on the locked kiosk.
 - **PIN authentication** — 4-digit PIN per member with on-screen numeric keypad. Opening **Settings** unlocks once with a parent PIN, then saves don't re-prompt until you leave; chore verification still asks each time; adding a meal needs no PIN. Parents can reset a child's PIN without knowing the current one. First-launch gate forces parents to set a PIN.
@@ -47,8 +47,8 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 - **Weather** via Open-Meteo (no API key), with **city/state search** that auto-fills coordinates and IANA timezone in one tap. Header widget + screensaver display.
 - **Google Calendar sync** per family member with incremental sync tokens.
 - **iCal calendar subscriptions** — subscribe to any read-only iCal/`webcal` URL (e.g. a Google "secret address in iCal format"); recurrences are expanded and refreshed on a per-feed interval.
-- **Screensaver** with quiet-hour schedule, clock + next event + weather, tap-to-wake. Interacting during quiet hours suspends the blackout for 5 minutes from your last touch.
-- **Mobile companion PWA** at `/m` — quick chore check-off, event add, meal voting, and shopping list from any phone.
+- **Screensaver** with quiet-hour schedule, clock + next event + weather, tap-to-wake. Interacting during quiet hours suspends the blackout for 5 minutes from your last touch. (Idle screensaver and the on-screen keyboard are wall-display affordances — they stay off on phones.)
+- **One responsive app for wall + phone** — every route adapts to phone screens (calendars scroll, panels stack, a compact bottom nav) and is installable as a PWA. The old `/m/*` mobile-only pages are gone; those URLs redirect into the unified routes, so existing home-screen installs keep working.
 - **Playwright end-to-end tests** covering critical flows (PIN gates, weather save + header refresh, chore verify, home meal panel).
 
 ## Screens
@@ -60,13 +60,13 @@ Inspired by Skylight Calendar, Cozyla, DAKboard, and Hearth.
 | `/month` | Full month grid |
 | `/chores` | Per-member chore board with pending verifications and rewards shelf |
 | `/meals` | Weekly meal plan + shopping list panel + meal library + vote-for-next-week |
-| `/settings` | Family (names, nicknames, headshots, roles + PINs), chores, rewards, calendars (Google account links + iCal subscriptions), weather, display (quiet hours, Hijri offset, idle), advanced (factory reset) |
+| `/settings` | Family (names, nicknames, headshots, roles + PINs), chores, rewards, calendars (Google account links + iCal subscriptions), weather, display (home address, commute, quiet hours, Hijri offset, idle), advanced (factory reset) |
 | `/me/[memberId]` | Personal view — that member's chores, schedule, meal votes, rewards |
-| `/m` | Mobile home (chore progress + today's events + shopping + vote tile) |
-| `/m/chores/[memberId]` | Per-member mobile chore check-off (with verify pills) |
-| `/m/event` | Mobile quick-add event (with recurrence) |
-| `/m/shopping` | Mobile shopping list |
-| `/m/vote` | Mobile meal voting |
+| `/shopping` | Shopping list |
+| `/vote` | Meal-idea proposals + voting |
+| `/event` | Quick-add event (with recurrence + transport mode) |
+
+Every route is responsive (wall + phone). Legacy `/m`, `/m/event`, `/m/shopping`, `/m/vote`, and `/m/chores/[id]` redirect into the routes above (`/`, `/event`, `/shopping`, `/vote`, `/me/[id]`).
 
 ## Requirements
 
@@ -328,8 +328,9 @@ Personal-scope OAuth apps in Google Cloud stay in "testing" mode indefinitely un
 | Chore reset hour | Display | 4 (04:00) | Daily chores reset at this hour local |
 | Hijri offset (moon-sighting) | Display | 0 | Shift Islamic (Umm al-Qura) date by ±3 days |
 | On-screen keyboard | Display | Off | Show a touch QWERTY (via a ⌨️ button) when a text field is focused — for kiosks with no physical keyboard |
-| Home address | Display | none | Origin for event commute estimates; also sets the weather location (geocoded via US Census + OpenStreetMap) |
-| Commute by | Display | Car | Car (OSRM driving) or Bus (rough distance-based estimate) for event commute times |
+| Home address | Display | none | Origin for event commute estimates and for **ranking location-lookup results by proximity**; also sets the weather location (geocoded via US Census + OpenStreetMap/Photon) |
+| Commute by | Display | Car | **Default** transport for new events — Car (OSRM driving) or Bus (rough distance-based estimate). Each event can override this with its own Car/Bus toggle |
+| Google Places API key | Display | none | Optional — enables business/POI name lookup (e.g. a specific restaurant/church) that keyless OpenStreetMap geocoders can't resolve |
 | Member PIN | Family | not set | 4-digit numeric — required for personal + admin actions |
 | Member role | Family | parent | Parent or child; determines verify rules and access to admin |
 | Member nickname | Family | none | Optional friendly name shown around the app in place of the given name |
@@ -407,20 +408,16 @@ sudo systemctl start zfamily
 
 The schema is applied via `CREATE TABLE IF NOT EXISTS` on every boot in `src/lib/db.ts`. New columns require additive ALTER statements (add them to the migration function). There is no down-migration path.
 
-## Mobile companion (PWA)
+## Mobile / PWA
 
-Family members can install zFamily on their phone home screen. The PWA scope is `/m`, so installing from `http://<your-host>:3000/m` gets a phone-optimized shell.
+There is no separate mobile app — the whole hub is responsive, so any route works on a phone and family members can install it to their home screen. The PWA scope is `/` (the root), so installing from `http://<your-host>:3000/` gets the full, phone-adapted app: dashboard, calendars, chores, meals, shopping, and meal voting, all behind the same per-action PINs. A compact bottom nav (Home · Week · Month · Chores · Meals · Shop · Vote · Settings) adapts to the screen.
 
-Features:
-- Chore progress dashboard per member
-- One-tap check-off (long-press to undo)
-- Quick-add event that pushes to the shared calendar
-- Shared shopping list
+The former mobile-only routes (`/m`, `/m/event`, `/m/shopping`, `/m/vote`, `/m/chores/[id]`) now **redirect** into the unified routes, so older home-screen installs and bookmarks keep working.
 
-**Install on iOS**: Safari → open `/m` → Share → Add to Home Screen.
-**Install on Android**: Chrome → open `/m` → menu → Install app.
+**Install on iOS**: Safari → open the site → Share → Add to Home Screen.
+**Install on Android**: Chrome → open the site → menu → Install app.
 
-To reach the dashboard and PWA from phones and laptops that aren't on your home Wi‑Fi, see [Remote access (Tailscale)](#remote-access-tailscale) below.
+To reach the hub from phones and laptops that aren't on your home Wi‑Fi, see [Remote access (Tailscale)](#remote-access-tailscale) below.
 
 ## Remote access (Tailscale)
 
@@ -445,8 +442,7 @@ Install the Tailscale app on each phone/laptop ([iOS](https://apps.apple.com/app
 
 Using the kiosk's MagicDNS name (or its `100.x.y.z` Tailscale IP from the admin console):
 
-- Wall dashboard: `http://zfamily-kiosk:3000`
-- Mobile PWA: `http://zfamily-kiosk:3000/m`
+- Wall dashboard / phone app: `http://zfamily-kiosk:3000`
 
 This works from cellular data too — Tailscale routes the traffic privately. No ports are opened on your router.
 
@@ -460,7 +456,7 @@ sudo tailscale serve --bg 3000
 sudo tailscale serve status     # shows the https://zfamily-kiosk.<tailnet>.ts.net URL
 ```
 
-Then use `https://zfamily-kiosk.<your-tailnet>.ts.net` (and `/m` for the PWA). The certificate is trusted automatically on tailnet devices, and Add‑to‑Home‑Screen works.
+Then use `https://zfamily-kiosk.<your-tailnet>.ts.net` (same URL for the wall and the phone PWA). The certificate is trusted automatically on tailnet devices, and Add‑to‑Home‑Screen works.
 
 > **Keep it private.** Do **not** use `tailscale funnel` (which publishes the URL to the public internet) unless you also front zFamily with the PIN protections and understand the exposure — there is no login wall, only per‑action PINs. For family‑only access, `tailscale serve` (tailnet‑only) is the right choice.
 
@@ -516,22 +512,24 @@ zfamily/
     │   ├── layout.tsx            # Root layout (html/body/globals only)
     │   ├── globals.css
     │   ├── actions.ts            # Server actions (all mutations)
-    │   ├── (kiosk)/              # Route group: kiosk display UI
+    │   ├── (kiosk)/              # Route group: the responsive app (wall + phone)
     │   │   ├── layout.tsx        # Header + BottomNav + Screensaver + PinSetupGate
     │   │   ├── page.tsx          # Family home dashboard (verse, week, today's meals)
     │   │   ├── week/page.tsx
     │   │   ├── month/page.tsx
     │   │   ├── chores/page.tsx
     │   │   ├── meals/page.tsx
+    │   │   ├── shopping/page.tsx
+    │   │   ├── vote/page.tsx
+    │   │   ├── event/page.tsx
     │   │   ├── settings/page.tsx
     │   │   └── me/[memberId]/page.tsx
-    │   ├── m/                    # Route group: mobile PWA
-    │   │   ├── layout.tsx
-    │   │   ├── page.tsx
-    │   │   ├── chores/[memberId]/page.tsx
-    │   │   ├── event/page.tsx
-    │   │   ├── shopping/page.tsx
-    │   │   └── vote/page.tsx
+    │   ├── m/                    # Legacy mobile paths — thin redirects into the above
+    │   │   ├── page.tsx          # → /
+    │   │   ├── chores/[memberId]/page.tsx  # → /me/[id]
+    │   │   ├── event/page.tsx    # → /event
+    │   │   ├── shopping/page.tsx # → /shopping
+    │   │   └── vote/page.tsx     # → /vote
     │   └── api/
     │       ├── sync/route.ts
     │       └── auth/google/…
@@ -552,7 +550,9 @@ zfamily/
         ├── pins.ts               # scrypt-hashed PINs, timing-safe verify
         ├── settings.ts           # + getTimezone() helper
         ├── weather.ts            # Open-Meteo + location-keyed cache
-        ├── geocode.ts            # City search → lat/lon/tz
+        ├── geocode.ts            # City search → lat/lon/tz (weather location)
+        ├── address.ts            # City/State label + geocode string helpers
+        ├── commute.ts            # Location lookup (Places/Census/Photon/Nominatim) + home-proximity ranking + OSRM commute
         ├── hijri.ts              # Umm al-Qura calendar + offset
         ├── verses.ts             # Curated 50-verse library, deterministic pick
         └── google.ts             # Calendar OAuth + incremental sync
@@ -667,7 +667,7 @@ Node server probably isn't up yet. Chromium autostart races the systemd service;
 **v2 (shipped):**
 - ✅ Meal planner + shopping list
 - ✅ Screensaver + quiet hours (clock and clock+next modes)
-- ✅ Mobile companion PWA at `/m`
+- ✅ Mobile companion PWA at `/m` _(later unified into the responsive main app — see below)_
 
 **v3 (shipped):**
 - ✅ Verification workflow — pending state, parent verifies children, peer verification for parents
@@ -680,6 +680,9 @@ Node server probably isn't up yet. Chromium autostart races the systemd service;
 - ✅ **Admin gate** — settings/rewards/chores/family CRUD require an authenticated parent
 - ✅ **First-launch PIN setup** — enforced before any use
 - ✅ **Local recurring events** — weekly / monthly / quarterly, client-expanded
+- ✅ **Multi-participant events** with per-color gradients
+- ✅ **Event location lookup + commute** — multi-source geocoding, home-proximity ranking, per-event Car/Bus commute time
+- ✅ **One responsive app** for wall + phone — the separate `/m` PWA was folded into the main routes (legacy `/m/*` redirect)
 
 **v4 (future):**
 - 🎤 **Voice input** — Whisper-based local ASR for quick-add (events, chores, shopping items) and PIN-less shortcuts
